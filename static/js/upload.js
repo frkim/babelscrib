@@ -146,22 +146,18 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-
     function preventDefaults(e) {
         e.preventDefault();
         e.stopPropagation();
     }
 
-
     function highlight() {
         fileDrop.classList.add('highlight');
     }
 
-
     function unhighlight() {
         fileDrop.classList.remove('highlight');
     }
-
 
     function handleDrop(e) {
         const dt = e.dataTransfer;
@@ -176,7 +172,6 @@ document.addEventListener('DOMContentLoaded', function() {
             updateFileDisplay(files);
         }
     }
-
 
     function updateFileDisplay(files) {
         if (files.length === 0) {
@@ -225,9 +220,17 @@ document.addEventListener('DOMContentLoaded', function() {
             const icon = getFileIcon(extension);
             
             html += `
-                <div class="file-row ${fileType}">
+                <div class="file-row ${fileType}" data-file-index="${index}">
                     <div class="file-icon">${icon}</div>
                     <div class="file-name">${file.name}</div>
+                    <div class="file-status">
+                        <div class="file-progress" id="progress-${index}">
+                            <div class="file-progress-bar"></div>
+                        </div>
+                        <svg class="file-tick" id="tick-${index}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="9,11 12,14 22,4"></polyline>
+                        </svg>
+                    </div>
                     <div class="file-remove" data-file-index="${index}" title="Remove file">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="3,6 5,6 21,6"></polyline>
@@ -299,6 +302,35 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Helper functions to control file progress indicators
+    function showFileProgress(fileIndex) {
+        const progressElement = document.getElementById(`progress-${fileIndex}`);
+        if (progressElement) {
+            progressElement.classList.add('show');
+        }
+    }
+
+    function hideFileProgress(fileIndex) {
+        const progressElement = document.getElementById(`progress-${fileIndex}`);
+        if (progressElement) {
+            progressElement.classList.remove('show');
+        }
+    }
+
+    function showFileTick(fileIndex) {
+        const tickElement = document.getElementById(`tick-${fileIndex}`);
+        if (tickElement) {
+            tickElement.classList.add('show');
+        }
+    }
+
+    function hideFileTick(fileIndex) {
+        const tickElement = document.getElementById(`tick-${fileIndex}`);
+        if (tickElement) {
+            tickElement.classList.remove('show');
+        }
+    }
+
     // Function to remove file from selection by index
     function removeFileByIndex(index) {
         console.log('removeFileByIndex called with index:', index, 'total files:', fileInput.files.length);
@@ -343,10 +375,19 @@ document.addEventListener('DOMContentLoaded', function() {
         let uploadResults = [];
 
         files.forEach((file, index) => {
+            // Show progress indicator for this file
+            showFileProgress(index);
+            
             uploadFile(file, index + 1, totalFiles)
                 .then(result => {
                     completedUploads++;
                     uploadResults.push({file: file.name, success: result.success, message: result.message});
+                    
+                    // Hide progress and show tick for this file
+                    hideFileProgress(index);
+                    if (result.success) {
+                        showFileTick(index);
+                    }
                     
                     // Update progress
                     progressDiv.innerHTML = `<p>Progress: ${completedUploads}/${totalFiles} files uploaded</p>`;
@@ -359,6 +400,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 .catch(error => {
                     completedUploads++;
                     uploadResults.push({file: file.name, success: false, message: 'Upload failed: ' + error.message});
+                    
+                    // Hide progress for this file (no tick for failed uploads)
+                    hideFileProgress(index);
                     
                     // Update progress
                     progressDiv.innerHTML = `<p>Progress: ${completedUploads}/${totalFiles} files processed</p>`;
@@ -396,7 +440,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         uploadStatus.innerHTML = html;
     }
-
 
     function uploadFile(file, fileNumber, totalFiles) {
         const url = '/upload/';

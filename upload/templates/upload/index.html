@@ -88,6 +88,46 @@
             flex-grow: 1;
             text-align: left;
         }
+        .file-status {
+            margin-left: 10px;
+            display: flex;
+            align-items: center;
+            min-width: 20px;
+        }
+        .file-progress {
+            width: 60px;
+            height: 4px;
+            background-color: #e0e0e0;
+            border-radius: 2px;
+            overflow: hidden;
+            display: none;
+        }
+        .file-progress.show {
+            display: block;
+        }
+        .file-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #007cba 0%, #005a87 50%, #007cba 100%);
+            background-size: 200% 100%;
+            animation: progressAnimation 1.5s ease-in-out infinite;
+        }
+        @keyframes progressAnimation {
+            0% {
+                background-position: 200% 0;
+            }
+            100% {
+                background-position: -200% 0;
+            }
+        }
+        .file-tick {
+            width: 16px;
+            height: 16px;
+            color: #43a047;
+            display: none;
+        }
+        .file-tick.show {
+            display: block;
+        }
         .file-remove {
             margin-left: 10px;
             cursor: pointer;
