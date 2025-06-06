@@ -11,8 +11,30 @@ logger = logging.getLogger(__name__)
 
 @csrf_exempt
 def upload_file(request):
-    if request.method == 'POST' and request.FILES['file']:
-        file = request.FILES['file']
+    if request.method == 'POST':
+        # Handle both single file and multiple files
+        files = request.FILES.getlist('file') if 'file' in request.FILES else []
+        email = request.POST.get('email', '').strip()
+        
+        if not files:
+            return JsonResponse({'error': 'No files provided'}, status=400)
+        
+        if not email:
+            return JsonResponse({'error': 'Email address is required'}, status=400)
+        
+        # Basic email validation
+        import re
+        email_regex = r'^[^\s@]+@[^\s@]+\.[^\s@]+$'
+        if not re.match(email_regex, email):
+            return JsonResponse({'error': 'Invalid email address'}, status=400)
+        
+        # For now, handle one file at a time (the frontend will call this endpoint multiple times)
+        file = files[0] if files else None
+        
+        if not file:
+            return JsonResponse({'error': 'No file provided'}, status=400)
+        
+        logger.info(f"Upload request from email: {email} for file: {file.name}")
         
         try:
             # Get connection string from environment
@@ -43,11 +65,12 @@ def upload_file(request):
             blob_client = blob_service_client.get_blob_client(container=container_name, blob=file.name)
             blob_client.upload_blob(file, overwrite=True)
             
-            logger.info(f"Successfully uploaded file: {file.name}")
+            logger.info(f"Successfully uploaded file: {file.name} for email: {email}")
             return JsonResponse({
                 'message': 'File uploaded successfully',
                 'filename': file.name,
-                'container': container_name
+                'container': container_name,
+                'email': email
             })
             
         except AzureError as e:
@@ -57,7 +80,7 @@ def upload_file(request):
             logger.error(f"Unexpected error during upload: {str(e)}")
             return JsonResponse({'error': 'Upload failed'}, status=500)
 
-    return JsonResponse({'error': 'Invalid request'}, status=400)
+    return JsonResponse({'error': 'Invalid request method'}, status=400)
 
 def index(request):
     return render(request, 'upload/index.html')
