@@ -1,0 +1,6 @@
+Django
+djangorestframework
+azure-storage-blob
+python-dotenv
+azure-ai-translation-document==1.0.0
+django-environ

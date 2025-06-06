@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Upload</title>
+    <style>
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        .file-drop {
+            border: 2px dashed #ccc;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            margin: 20px 0;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .file-drop:hover {
+            border-color: #007cba;
+            background-color: #f0f8ff;
+        }
+        .btn {
+            background-color: #007cba;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        .btn:hover {
+            background-color: #005a87;
+        }
+        #upload-status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .button-container {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="font-family: 'Segoe UI Light', 'Segoe UI', Arial, sans-serif; font-weight: 300; font-size: 2.8em;">BabelScrib - Traduction</h1>
+        <form id="upload-form" enctype="multipart/form-data" method="post" action="/upload/">
+            <div id="file-drop" class="file-drop" onclick="document.getElementById('file-input').click();">
+                <div style="display: flex; justify-content: center; gap: 18px; margin-bottom: 18px;">
+                    <!-- PDF Icon -->
+                    <svg width="38" height="54" viewBox="0 0 48 62" fill="none">
+                        <rect width="48" height="62" rx="8" fill="#E53935"/>
+                        <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">.pdf</text>
+                    </svg>
+                    <!-- DOCX Icon -->
+                    <svg width="38" height="54" viewBox="0 0 48 62" fill="none">
+                        <rect width="48" height="62" rx="8" fill="#1976D2"/>
+                        <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">.docx</text>
+                    </svg>
+                    <!-- PPTX Icon -->
+                    <svg width="38" height="54" viewBox="0 0 48 62" fill="none">
+                        <rect width="48" height="62" rx="8" fill="#FF7043"/>
+                        <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">.pptx</text>
+                    </svg>
+                    <!-- TXT Icon -->
+                    <svg width="38" height="54" viewBox="0 0 48 62" fill="none">
+                        <rect width="48" height="62" rx="8" fill="#616161"/>
+                        <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">.txt</text>
+                    </svg>
+                    <!-- MD Icon -->
+                    <svg width="38" height="54" viewBox="0 0 48 62" fill="none">
+                        <rect width="48" height="62" rx="8" fill="#43A047"/>
+                        <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">...</text>
+                    </svg>
+                </div>
+                <p>Click here to select a file or drag and drop your file here</p>
+                <p><small>Supported formats: pdf, doc, docx, txt, pptx, md</small></p>
+            </div>
+            <input type="file" id="file-input" name="file" accept=".pdf,.doc,.docx,.txt,.pptx,.md" style="display: none;" onchange="updateFileName(this)">
+            <div class="button-container">
+                <button type="button" class="btn" onclick="document.getElementById('file-input').click();">Select Document</button>
+                <button type="submit" class="btn">Upload</button>
+            </div>
+        </form>
+        <div id="upload-status"></div>
+    </div>
+
+    <script>
+        function updateFileName(input) {
+            const dropArea = document.getElementById('file-drop');
+            if (input.files.length > 0) {
+                dropArea.innerHTML = '<p><strong>Selected:</strong> ' + input.files[0].name + '</p><p><small>Click to select a different file</small></p>';
+            }
+        }
+
+        // Handle drag and drop
+        const dropArea = document.getElementById('file-drop');
+        const fileInput = document.getElementById('file-input');
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight() {
+            dropArea.style.borderColor = '#007cba';
+            dropArea.style.backgroundColor = '#f0f8ff';
+        }
+
+        function unhighlight() {
+            dropArea.style.borderColor = '#ccc';
+            dropArea.style.backgroundColor = '#f9f9f9';
+        }
+
+        dropArea.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            fileInput.files = files;
+            updateFileName(fileInput);
+        }
+    </script>
+</body>
+</html>
