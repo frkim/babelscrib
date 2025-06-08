@@ -6,6 +6,10 @@ from azure.core.exceptions import ResourceExistsError, AzureError
 import os
 import logging
 from django.conf import settings
+# Add translation service imports
+from lib.translation_service import create_translation_service
+from lib.config import get_config
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -84,3 +88,67 @@ def upload_file(request):
 
 def index(request):
     return render(request, 'upload/index.html')
+
+@csrf_exempt
+def translate_documents(request):
+    """Handle document translation requests."""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            target_language = data.get('target_language', 'en')
+            source_language = data.get('source_language')  # Optional
+            email = data.get('email', '').strip()
+            clear_target = data.get('clear_target', True)  # Default to True for automatic cleanup
+            
+            if not email:
+                return JsonResponse({'error': 'Email address is required'}, status=400)
+            
+            logger.info(f"Translation request from email: {email} to language: {target_language}")
+            if clear_target:
+                logger.info("Target container will be cleared before translation")
+            
+            # Get configuration and create translation service
+            try:
+                config = get_config()
+                translation_service = create_translation_service()
+            except ValueError as config_error:
+                logger.error(f"Configuration error: {str(config_error)}")
+                return JsonResponse({
+                    'error': f'Translation service configuration error: {str(config_error)}'
+                }, status=500)
+            
+            # Perform translation with automatic target cleanup
+            result = translation_service.translate_documents(
+                source_uri=config.source_uri,
+                target_uri=config.target_uri,
+                target_language=target_language,
+                source_language=source_language,
+                clear_target=clear_target
+            )
+            
+            logger.info(f"Translation completed for {email}. Status: {result['status']}")
+            
+            return JsonResponse({
+                'success': True,
+                'data': result,
+                'message': f"Translation started successfully. Status: {result['status']}"
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON payload'}, status=400)
+        except Exception as e:
+            error_message = str(e)
+            logger.error(f'Translation error for {email if "email" in locals() else "unknown"}: {error_message}')
+            
+            # Provide more user-friendly error messages
+            if "TargetFileAlreadyExists" in error_message:
+                return JsonResponse({
+                    'error': 'Target files already exist. Please try again - the system will automatically clear previous translations.',
+                    'retry_suggested': True
+                }, status=409)  # Conflict status code
+            else:
+                return JsonResponse({
+                    'error': f'Translation failed: {error_message}'
+                }, status=500)
+    
+    return JsonResponse({'error': 'Invalid request method'}, status=405)

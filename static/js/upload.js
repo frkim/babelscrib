@@ -436,9 +436,161 @@ document.addEventListener('DOMContentLoaded', function() {
                 html += `<li>${r.file}: ${r.message}</li>`;
             });
             html += `</ul></details>`;
+            
+            // Show translation controls if there are successful uploads
+            showTranslationControls();
         }
         
         uploadStatus.innerHTML = html;
+    }
+
+    // Function to show translation controls
+    function showTranslationControls() {
+        const translateControls = document.getElementById('translate-controls');
+        if (translateControls) {
+            translateControls.classList.add('show');
+            setupTranslationHandlers();
+        }
+    }
+
+    // Function to setup translation event handlers
+    function setupTranslationHandlers() {
+        const launchTranslationBtn = document.getElementById('launch-translation-btn');
+        const translationStatus = document.getElementById('translation-status');
+        const targetLanguageSelect = document.getElementById('target-language');
+        const sourceLanguageSelect = document.getElementById('source-language');
+
+        if (launchTranslationBtn && !launchTranslationBtn.hasAttribute('data-handler-attached')) {
+            launchTranslationBtn.setAttribute('data-handler-attached', 'true');
+            launchTranslationBtn.addEventListener('click', function() {
+                const targetLanguage = targetLanguageSelect.value;
+                const sourceLanguage = sourceLanguageSelect.value;
+                const email = emailInput.value.trim();
+
+                if (!email) {
+                    showTranslationStatus('Please enter your email address.', 'error');
+                    return;
+                }
+
+                if (!targetLanguage) {
+                    showTranslationStatus('Please select a target language.', 'error');
+                    return;
+                }
+
+                // Disable button and show loading status
+                launchTranslationBtn.disabled = true;
+                launchTranslationBtn.textContent = 'Translation in Progress...';
+                showTranslationStatus('Starting translation process...', 'loading');
+
+                // Prepare request data
+                const requestData = {
+                    target_language: targetLanguage,
+                    email: email,
+                    clear_target: true  // Always clear target files to prevent conflicts
+                };
+
+                if (sourceLanguage) {
+                    requestData.source_language = sourceLanguage;
+                }
+
+                // Make translation request
+                fetch('/translate/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData)
+                })
+                .then(response => {
+                    if (response.status === 409) {
+                        // Handle conflict (target files already exist)
+                        return response.json().then(data => {
+                            throw new Error(data.error || 'Translation conflict occurred');
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        showTranslationStatus(
+                            `Translation completed successfully! Status: ${data.data.status}. ` +
+                            `Total documents: ${data.data.total_documents}, ` +
+                            `Succeeded: ${data.data.succeeded_documents}, ` +
+                            `Failed: ${data.data.failed_documents}`,
+                            'success'
+                        );
+                        
+                        // Show detailed results if available
+                        if (data.data.documents && data.data.documents.length > 0) {
+                            let detailsHtml = '<br><details><summary>View translation details</summary><ul>';
+                            data.data.documents.forEach(doc => {
+                                // Debug logging
+                                console.log('Document data:', doc);
+                                console.log('Source filename:', doc.source_filename);
+                                console.log('Translated filename:', doc.translated_filename);
+                                console.log('Document ID:', doc.id);
+                                
+                                if (doc.status === 'Succeeded') {
+                                    // Use translated filename if available, otherwise use source filename, fallback to ID
+                                    const displayName = doc.translated_filename || doc.source_filename || doc.id;
+                                    console.log('Display name for success:', displayName);
+                                    detailsHtml += `<li>✅ ${displayName}: Translated to ${doc.translated_to}</li>`;
+                                } else {
+                                    // Use source filename if available, fallback to ID
+                                    const displayName = doc.source_filename || doc.id;
+                                    console.log('Display name for failure:', displayName);
+                                    detailsHtml += `<li>❌ ${displayName}: ${doc.error ? doc.error.message : 'Failed'}</li>`;
+                                }
+                            });
+                            detailsHtml += '</ul></details>';
+                            
+                            const currentStatus = translationStatus.innerHTML;
+                            translationStatus.innerHTML = currentStatus + detailsHtml;
+                        }
+                    } else {
+                        showTranslationStatus(`Translation failed: ${data.error}`, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Translation error:', error);
+                    const errorMessage = error.message || 'Translation request failed. Please try again.';
+                    
+                    if (errorMessage.includes('Target files already exist') || errorMessage.includes('TargetFileAlreadyExists')) {
+                        showTranslationStatus(
+                            'Previous translation files were found and cleared automatically. Please try the translation again.',
+                            'error'
+                        );
+                    } else {
+                        showTranslationStatus(`Translation failed: ${errorMessage}`, 'error');
+                    }
+                })
+                .finally(() => {
+                    // Re-enable button
+                    launchTranslationBtn.disabled = false;
+                    launchTranslationBtn.textContent = 'Launch Translation Process';
+                });
+            });
+        }
+    }
+
+    // Function to show translation status messages
+    function showTranslationStatus(message, type) {
+        const translationStatus = document.getElementById('translation-status');
+        const progressContainer = document.getElementById('progress-container');
+        
+        if (translationStatus) {
+            translationStatus.innerHTML = message;
+            translationStatus.className = `translation-status show ${type}`;
+        }
+        
+        // Show/hide progress bar based on type
+        if (progressContainer) {
+            if (type === 'loading') {
+                progressContainer.classList.add('show');
+            } else {
+                progressContainer.classList.remove('show');
+            }
+        }
     }
 
     function uploadFile(file, fileNumber, totalFiles) {

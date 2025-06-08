@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,6 +11,36 @@
             margin: 50px auto;
             padding: 20px;
             font-family: Arial, sans-serif;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .logo {
+            height: 60px;
+            width: auto;
+            margin-right: 20px;
+        }
+        .logo img {
+            height: 100%;
+            width: auto;
+            object-fit: contain;
+        }
+        /* Responsive logo sizing */
+        @media (max-width: 600px) {
+            .header {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+            }
+            .logo {
+                margin-right: 0;
+                margin-bottom: 15px;
+                height: 50px;
+            }
         }
         .file-drop {
             border: 2px dashed #ccc;
@@ -217,11 +248,122 @@
             cursor: not-allowed;
             opacity: 0.6;
         }
+        .btn.translate-btn {
+            background-color: #43a047;
+        }
+        .btn.translate-btn:hover {
+            background-color: #2e7d32;
+        }
+        .btn.translate-btn:disabled {
+            background-color: #ccc;
+        }
+        .translate-controls {
+            display: none;
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+        .translate-controls.show {
+            display: block;
+        }
+        .language-selection {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .language-selection label {
+            font-weight: bold;
+            min-width: 120px;
+        }
+        .language-selection select {
+            padding: 6px 10px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 150px;
+        }
+        .translation-status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .translation-status.show {
+            display: block;
+        }
+        .translation-status.loading {
+            background-color: #e3f2fd;
+            color: #1976d2;
+        }
+        .translation-status.success {
+            background-color: #e8f5e8;
+            color: #2e7d32;
+        }
+        .translation-status.error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        
+        /* Infinite Progress Bar */
+        .progress-container {
+            width: 100%;
+            height: 4px;
+            background-color: #e0e0e0;
+            border-radius: 2px;
+            overflow: hidden;
+            margin: 10px 0;
+            display: none;
+        }
+        
+        .progress-container.show {
+            display: block;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #1976d2, #42a5f5, #1976d2);
+            background-size: 200% 100%;
+            border-radius: 2px;
+            animation: progressAnimation 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes progressAnimation {
+            0% {
+                background-position: 200% 0;
+            }
+            100% {
+                background-position: -200% 0;
+            }
+        }
+        
+        /* Alternative pulse animation for the progress text */
+        .translation-status.loading {
+            background-color: #e3f2fd;
+            color: #1976d2;
+            animation: pulseAnimation 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulseAnimation {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.7;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1 style="font-family: 'Segoe UI Light', 'Segoe UI', Arial, sans-serif; font-weight: 300; font-size: 2.8em;">BabelScrib - Traduction</h1>
+        <!-- Logo Section -->
+        <div class="header">
+            <div class="logo">
+                <img src="{% static 'images/logo.png' %}" alt="BabelScrib Logo">
+            </div>
+        </div>
         <form id="upload-form" enctype="multipart/form-data" method="post" action="/upload/">
             <div id="file-drop" class="file-drop">
                 <div style="display: flex; justify-content: center; gap: 18px; margin-bottom: 18px;">
@@ -267,9 +409,53 @@
             </div>
         </form>
         <div id="upload-status"></div>
+        
+        <!-- Translation Controls -->
+        <div id="translate-controls" class="translate-controls">
+            <h4>Document Translation</h4>
+            <div class="language-selection">
+                <label for="target-language">Translate to:</label>
+                <select id="target-language" name="target_language">
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="it">Italian</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="zh">Chinese</option>
+                    <option value="ja">Japanese</option>
+                    <option value="ko">Korean</option>
+                    <option value="ar">Arabic</option>
+                    <option value="ru">Russian</option>
+                    <option value="hi">Hindi</option>
+                </select>
+            </div>
+            <div class="language-selection">
+                <label for="source-language">Source language:</label>
+                <select id="source-language" name="source_language">
+                    <option value="">Auto-detect</option>
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="it">Italian</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="zh">Chinese</option>
+                    <option value="ja">Japanese</option>
+                    <option value="ko">Korean</option>
+                    <option value="ar">Arabic</option>
+                    <option value="ru">Russian</option>
+                    <option value="hi">Hindi</option>
+                </select>
+            </div>
+            <button type="button" class="btn translate-btn" id="launch-translation-btn">Launch Translation Process</button>
+            <div id="translation-status" class="translation-status"></div>
+            <div id="progress-container" class="progress-container">
+                <div class="progress-bar"></div>
+            </div>
+        </div>
     </div>
 
-    {% load static %}
     <script src="{% static 'js/upload.js' %}"></script>
 </body>
 </html>
