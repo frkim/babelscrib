@@ -5,6 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document Upload</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="{% static 'images/favicon.ico' %}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'images/favicon-32x32.png' %}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'images/favicon-16x16.png' %}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'images/apple-touch-icon.png' %}">
+    <link rel="manifest" href="{% static 'images/site.webmanifest' %}">
+    
     <style>
         .container {
             max-width: 800px;
@@ -420,6 +428,12 @@
                 opacity: 0.7;
             }
         }
+        .cleanup-info {
+            margin: 15px 0;
+        }
+        .cleanup-info small {
+            line-height: 1.4;
+        }
     </style>
 </head>
 <body>
@@ -432,6 +446,12 @@
                 </a>
             </div>
         </div>
+        
+        <!-- Page Title -->
+        <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="font-family: 'Segoe UI Light', 'Segoe UI', Arial, sans-serif; font-weight: 300; font-size: 2em; color: #333; margin: 0;">Document Translator</h1>
+        </div>
+        
         <form id="upload-form" enctype="multipart/form-data" method="post" action="/upload/">
             <div id="file-drop" class="file-drop">
                 <div style="display: flex; justify-content: center; gap: 18px; margin-bottom: 18px;">
@@ -492,12 +512,7 @@
                     <option value="de">German</option>
                     <option value="it">Italian</option>
                     <option value="pt">Portuguese</option>
-                    <option value="zh">Chinese</option>
-                    <option value="ja">Japanese</option>
-                    <option value="ko">Korean</option>
-                    <option value="ar">Arabic</option>
-                    <option value="ru">Russian</option>
-                    <option value="hi">Hindi</option>
+                    <option value="pl">Polish</option>
                 </select>
             </div>
             <div class="language-selection">
@@ -510,13 +525,13 @@
                     <option value="de">German</option>
                     <option value="it">Italian</option>
                     <option value="pt">Portuguese</option>
-                    <option value="zh">Chinese</option>
-                    <option value="ja">Japanese</option>
-                    <option value="ko">Korean</option>
-                    <option value="ar">Arabic</option>
-                    <option value="ru">Russian</option>
-                    <option value="hi">Hindi</option>
+                    <option value="pl">Polish</option>
                 </select>
+            </div>
+            <div class="cleanup-info">
+                <small style="color: #666; font-style: italic; display: block; margin: 10px 0; padding: 8px; background-color: #f8f9fa; border-radius: 4px; border-left: 3px solid #28a745;">
+                    📝 Note: Original uploaded files are automatically removed after translation is complete. Old translated documents (older than 72 hours) are automatically cleaned up when starting a new translation. Translated documents are deleted immediately after download.
+                </small>
             </div>
             <button type="button" class="btn translate-btn" id="launch-translation-btn">Launch Translation Process</button>
             <div id="translation-status" class="translation-status"></div>

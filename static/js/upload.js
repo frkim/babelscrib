@@ -522,11 +522,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     return 'Starting translation process - Finalizing translation';
                 }
 
-                // Prepare request data
+                // Prepare request data - email is now handled by session
                 const requestData = {
                     target_language: targetLanguage,
-                    email: email,
-                    clear_target: true  // Always clear target files to prevent conflicts
+                    clear_target: true,  // Always clear target files to prevent conflicts
+                    cleanup_source: true  // Always clean up source files automatically
                 };
 
                 if (sourceLanguage) {
@@ -560,17 +560,39 @@ document.addEventListener('DOMContentLoaded', function() {
                     clearInterval(timeInterval);
                     
                     if (data.success) {
-                        showTranslationStatus(
-                            `Translation completed successfully! Status: ${data.data.status}. ` +
+                        // Build main success message
+                        let successMessage = `Translation completed successfully! Status: ${data.data.status}. ` +
                             `Total documents: ${data.data.total_documents}, ` +
                             `Succeeded: ${data.data.succeeded_documents}, ` +
-                            `Failed: ${data.data.failed_documents}`,
-                            'success'
-                        );
+                            `Failed: ${data.data.failed_documents}`;
+                        
+                        // Add source cleanup information if available
+                        if (data.data.source_cleanup) {
+                            const cleanup = data.data.source_cleanup;
+                            if (cleanup.cleanup_attempted) {
+                                if (cleanup.cleaned_files > 0) {
+                                    successMessage += `. Automatically removed ${cleanup.cleaned_files} source files`;
+                                    if (cleanup.failed_cleanups > 0) {
+                                        successMessage += ` (${cleanup.failed_cleanups} failed to clean)`;
+                                    }
+                                } else if (cleanup.failed_cleanups > 0) {
+                                    successMessage += `. Failed to automatically remove ${cleanup.failed_cleanups} source files`;
+                                } else {
+                                    successMessage += `. No source files found to remove`;
+                                }
+                            } else {
+                                successMessage += `. Automatic source cleanup was not performed: ${cleanup.reason}`;
+                            }
+                        }
+                        
+                        showTranslationStatus(successMessage, 'success');
                         
                         // Show detailed results if available
                         if (data.data.documents && data.data.documents.length > 0) {
                             let detailsHtml = '<br><details><summary>View translation details</summary><ul>';
+                            let downloadLinksHtml = '<br><div style="margin-top: 15px;"><h5>Download Translated Documents:</h5><ul style="list-style: none; padding-left: 0;">';
+                            let hasSuccessfulTranslations = false;
+                            
                             data.data.documents.forEach(doc => {
                                 // Debug logging
                                 console.log('Document data:', doc);
@@ -579,10 +601,29 @@ document.addEventListener('DOMContentLoaded', function() {
                                 console.log('Document ID:', doc.id);
                                 
                                 if (doc.status === 'Succeeded') {
+                                    hasSuccessfulTranslations = true;
                                     // Use translated filename if available, otherwise use source filename, fallback to ID
                                     const displayName = doc.translated_filename || doc.source_filename || doc.id;
                                     console.log('Display name for success:', displayName);
                                     detailsHtml += `<li>✅ ${displayName}: Translated to ${doc.translated_to}</li>`;
+                                    
+                                    // Add download link for successful translations
+                                    // Use the translated filename for the download URL
+                                    const fileName = doc.translated_filename || `translated_${doc.source_filename}` || `document_${doc.id}`;
+                                    const downloadUrl = `/download/${encodeURIComponent(fileName)}/`;
+                                    downloadLinksHtml += `
+                                        <li style="margin: 8px 0; padding: 8px; background-color: #e8f5e8; border-radius: 4px; border-left: 3px solid #43a047;">
+                                            <strong>${fileName}</strong><br>
+                                            <small>Translated to: ${doc.translated_to}</small><br>
+                                            <a href="${downloadUrl}" 
+                                               download="${fileName}" 
+                                               style="color: #2e7d32; text-decoration: none; font-weight: bold; margin-top: 5px; display: inline-block;"
+                                               onmouseover="this.style.textDecoration='underline'" 
+                                               onmouseout="this.style.textDecoration='none'">
+                                                📥 Download Translated Document
+                                            </a>
+                                        </li>
+                                    `;
                                 } else {
                                     // Use source filename if available, fallback to ID
                                     const displayName = doc.source_filename || doc.id;
@@ -590,10 +631,19 @@ document.addEventListener('DOMContentLoaded', function() {
                                     detailsHtml += `<li>❌ ${displayName}: ${doc.error ? doc.error.message : 'Failed'}</li>`;
                                 }
                             });
+                            
                             detailsHtml += '</ul></details>';
+                            downloadLinksHtml += '</ul></div>';
                             
                             const currentStatus = translationStatus.innerHTML;
-                            translationStatus.innerHTML = currentStatus + detailsHtml;
+                            let finalHtml = currentStatus + detailsHtml;
+                            
+                            // Only add download links if there are successful translations
+                            if (hasSuccessfulTranslations) {
+                                finalHtml += downloadLinksHtml;
+                            }
+                            
+                            translationStatus.innerHTML = finalHtml;
                         }
                     } else {
                         showTranslationStatus(`Translation failed: ${data.error}`, 'error');
