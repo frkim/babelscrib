@@ -29,6 +29,15 @@
             width: auto;
             object-fit: contain;
         }
+        .logo-link {
+            display: inline-block;
+            cursor: pointer;
+            transition: transform 0.2s ease, opacity 0.2s ease;
+        }
+        .logo-link:hover {
+            transform: scale(1.0);
+            opacity: 0.8;
+        }
         /* Responsive logo sizing */
         @media (max-width: 600px) {
             .header {
@@ -361,7 +370,9 @@
         <!-- Logo Section -->
         <div class="header">
             <div class="logo">
-                <img src="{% static 'images/logo.png' %}" alt="BabelScrib Logo">
+                <a href="/" class="logo-link" title="Go to Homepage">
+                    <img src="{% static 'images/logo.png' %}" alt="BabelScrib Logo">
+                </a>
             </div>
         </div>
         <form id="upload-form" enctype="multipart/form-data" method="post" action="/upload/">
