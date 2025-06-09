@@ -477,10 +477,50 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
 
-                // Disable button and show loading status
+                // Disable button and show loading status with enhanced progress
                 launchTranslationBtn.disabled = true;
                 launchTranslationBtn.textContent = 'Translation in Progress...';
-                showTranslationStatus('Starting translation process...', 'loading');
+                
+                // Start elapsed time tracking
+                const startTime = Date.now();
+                let elapsedSeconds = 0;
+                
+                // Show initial progress with elapsed time
+                showTranslationProgressWithTime('Starting translation process', elapsedSeconds);
+                
+                // Timer to update elapsed time every second
+                const timeInterval = setInterval(() => {
+                    elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+                    const currentMessage = getCurrentProgressMessage(elapsedSeconds);
+                    showTranslationProgressWithTime(currentMessage, elapsedSeconds);
+                }, 1000);
+                
+                // Simulate progress updates during translation
+                let progressMessages = [
+                    'Preparing documents for translation',
+                    'Connecting to translation service',
+                    'Processing documents',
+                    'Translating content',
+                    'Finalizing translation'
+                ];
+                
+                let currentStep = 0;
+                const progressInterval = setInterval(() => {
+                    if (currentStep < progressMessages.length) {
+                        // Don't call showTranslationProgress here anymore, let the timer handle it
+                        currentStep++;
+                    }
+                }, 2000); // Update every 2 seconds
+                
+                // Helper function to get current progress message based on elapsed time
+                function getCurrentProgressMessage(seconds) {
+                    if (seconds < 2) return 'Starting translation process';
+                    if (seconds < 4) return 'Starting translation process - Preparing documents for translation';
+                    if (seconds < 6) return 'Starting translation process - Connecting to translation service';
+                    if (seconds < 8) return 'Starting translation process - Processing documents';
+                    if (seconds < 10) return 'Starting translation process - Translating content';
+                    return 'Starting translation process - Finalizing translation';
+                }
 
                 // Prepare request data
                 const requestData = {
@@ -503,6 +543,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
                 .then(response => {
                     if (response.status === 409) {
+                        // Clear both intervals
+                        clearInterval(progressInterval);
+                        clearInterval(timeInterval);
+                        
                         // Handle conflict (target files already exist)
                         return response.json().then(data => {
                             throw new Error(data.error || 'Translation conflict occurred');
@@ -511,6 +555,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     return response.json();
                 })
                 .then(data => {
+                    // Clear both intervals
+                    clearInterval(progressInterval);
+                    clearInterval(timeInterval);
+                    
                     if (data.success) {
                         showTranslationStatus(
                             `Translation completed successfully! Status: ${data.data.status}. ` +
@@ -552,6 +600,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 })
                 .catch(error => {
+                    // Clear both intervals
+                    clearInterval(progressInterval);
+                    clearInterval(timeInterval);
+                    
                     console.error('Translation error:', error);
                     const errorMessage = error.message || 'Translation request failed. Please try again.';
                     
@@ -573,23 +625,95 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Function to show translation status messages
+    // Function to show translation status messages with enhanced progress bar
     function showTranslationStatus(message, type) {
         const translationStatus = document.getElementById('translation-status');
         const progressContainer = document.getElementById('progress-container');
         
         if (translationStatus) {
-            translationStatus.innerHTML = message;
+            if (type === 'loading') {
+                // Create enhanced loading message with spinner
+                const loadingHtml = `
+                    <div class="translation-progress-text">
+                        <div class="translation-spinner"></div>
+                        <span>${message}</span>
+                    </div>
+                `;
+                translationStatus.innerHTML = loadingHtml;
+            } else {
+                translationStatus.innerHTML = message;
+            }
             translationStatus.className = `translation-status show ${type}`;
         }
         
-        // Show/hide progress bar based on type
+        // Show/hide and animate progress bar based on type
         if (progressContainer) {
             if (type === 'loading') {
                 progressContainer.classList.add('show');
+                // Add pulsing effect to the progress container
+                progressContainer.style.animation = 'pulseContainer 2s ease-in-out infinite';
             } else {
                 progressContainer.classList.remove('show');
+                progressContainer.style.animation = '';
             }
+        }
+    }
+
+    // Add new function to show translation progress with elapsed time
+    function showTranslationProgressWithTime(message, elapsedSeconds) {
+        const translationStatus = document.getElementById('translation-status');
+        const progressContainer = document.getElementById('progress-container');
+        
+        if (translationStatus) {
+            // Format the message to always show "Starting translation process (X seconds)..."
+            let displayMessage;
+            if (message === 'Starting translation process') {
+                displayMessage = `Starting translation process (${elapsedSeconds} seconds)`;
+            } else {
+                // For other messages, keep the elapsed time format
+                displayMessage = `${message} (${elapsedSeconds} seconds)`;
+            }
+            
+            const progressHtml = `
+                <div class="translation-progress-text">
+                    <div class="translation-spinner"></div>
+                    <span>${displayMessage}...</span>
+                </div>
+            `;
+            translationStatus.innerHTML = progressHtml;
+            translationStatus.className = 'translation-status show loading';
+        }
+        
+        if (progressContainer) {
+            progressContainer.classList.add('show');
+            progressContainer.style.animation = 'pulseContainer 2s ease-in-out infinite';
+        }
+    }
+
+    // Add new function to show translation progress with percentage (if available)
+    function showTranslationProgress(message, percentage = null) {
+        const translationStatus = document.getElementById('translation-status');
+        const progressContainer = document.getElementById('progress-container');
+        
+        if (translationStatus) {
+            let progressHtml = `
+                <div class="translation-progress-text">
+                    <div class="translation-spinner"></div>
+                    <span>${message}</span>
+            `;
+            
+            if (percentage !== null) {
+                progressHtml += ` <span style="font-weight: bold; color: #43a047;">(${percentage}%)</span>`;
+            }
+            
+            progressHtml += `</div>`;
+            translationStatus.innerHTML = progressHtml;
+            translationStatus.className = 'translation-status show loading';
+        }
+        
+        if (progressContainer) {
+            progressContainer.classList.add('show');
+            progressContainer.style.animation = 'pulseContainer 2s ease-in-out infinite';
         }
     }
 
