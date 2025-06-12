@@ -76,6 +76,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Store current files for accumulation
+    let currentFiles = [];
+
     // Show file dialog when select button is clicked
     selectFileButton.addEventListener('click', function(e) {
         console.log('Select Document button clicked');
@@ -95,7 +98,12 @@ document.addEventListener('DOMContentLoaded', function() {
             return; // Exit early to prevent file dialog
         }
         
-        // Only open file dialog if we didn't click on a remove button
+        // Don't open dialog if clicking on the button (it has its own handler)
+        if (e.target.closest('#select-file-button')) {
+            return;
+        }
+        
+        // Only open file dialog if we didn't click on a remove button or the select button
         console.log('Drop area clicked');
         e.preventDefault();
         e.stopPropagation();
@@ -105,6 +113,22 @@ document.addEventListener('DOMContentLoaded', function() {
     // When files are selected, update the drop area and prepare for upload
     fileInput.addEventListener('change', function() {
         if (fileInput.files.length > 0) {
+            const newFiles = Array.from(fileInput.files);
+            
+            // Add new files to current selection (avoid duplicates by name and size)
+            newFiles.forEach(file => {
+                if (!currentFiles.some(f => f.name === file.name && f.size === file.size)) {
+                    currentFiles.push(file);
+                }
+            });
+            
+            // Update the file input with all accumulated files
+            const dataTransfer = new DataTransfer();
+            currentFiles.forEach(file => {
+                dataTransfer.items.add(file);
+            });
+            fileInput.files = dataTransfer.files;
+            
             updateFileDisplay(fileInput.files);
         }
     });
@@ -163,19 +187,32 @@ document.addEventListener('DOMContentLoaded', function() {
         const dt = e.dataTransfer;
         const files = dt.files;
         if (files.length > 0) {
-            // Create a DataTransfer to set fileInput.files
+            const newFiles = Array.from(files);
+            
+            // Add new files to current selection (avoid duplicates by name and size)
+            newFiles.forEach(file => {
+                if (!currentFiles.some(f => f.name === file.name && f.size === file.size)) {
+                    currentFiles.push(file);
+                }
+            });
+            
+            // Update the file input with all accumulated files
             const dataTransfer = new DataTransfer();
-            Array.from(files).forEach(file => {
+            currentFiles.forEach(file => {
                 dataTransfer.items.add(file);
             });
             fileInput.files = dataTransfer.files;
-            updateFileDisplay(files);
+            
+            updateFileDisplay(fileInput.files);
         }
     }
 
     function updateFileDisplay(files) {
         if (files.length === 0) {
-            // Reset to original state
+            // Reset current files array
+            currentFiles = [];
+            
+            // Reset to original state with complete content
             fileDrop.innerHTML = `
                 <div style="display: flex; justify-content: center; gap: 18px; margin-bottom: 18px;">
                     <!-- PDF Icon -->
@@ -204,9 +241,34 @@ document.addEventListener('DOMContentLoaded', function() {
                         <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">...</text>
                     </svg>
                 </div>
-                <p>Click here to select files or drag and drop your files here</p>
+                <p>Click here to select Documents button or drag and drop your files here</p>
                 <p><small>Supported formats: pdf, doc, docx, txt, pptx, md</small></p>
+                <p><small>Document size limit: ≤ 40MB per file • Up to 1000 files per batch • Total batch size ≤ 250MB</small></p>
+                <p><small><a id="azure-ai-limits-link" href="https://learn.microsoft.com/en-us/azure/ai-services/translator/service-limits#asynchronous-batch-operation-limits" target="_blank" style="color: #007cba; text-decoration: none;">View all Azure AI Translator limits →</a></small></p>
+                <div style="text-align: center; margin-top: 15px;">
+                    <button type="button" class="btn" id="select-file-button" style="display: inline-block;">Select Documents</button>
+                </div>
             `;
+            
+            // Re-attach event listener for the new select button
+            const newSelectButton = document.getElementById('select-file-button');
+            if (newSelectButton) {
+                newSelectButton.addEventListener('click', function(e) {
+                    console.log('Select Document button clicked');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openFileDialog();
+                });
+            }
+            
+            // Re-attach event listener for the Azure AI limits link to prevent file dialog
+            const newLink = document.getElementById('azure-ai-limits-link');
+            if (newLink) {
+                newLink.addEventListener('click', function(event) {
+                    event.stopPropagation();
+                });
+            }
+            
             return;
         }
 
@@ -244,7 +306,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         html += '</div>';
-        html += '<p><small>Click to select different files</small></p>';
+        html += '<p><small>Click here to add other documents</small></p>';
         
         fileDrop.innerHTML = html;
     }
@@ -336,17 +398,18 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('removeFileByIndex called with index:', index, 'total files:', fileInput.files.length);
         
         if (fileInput.files && fileInput.files.length > 0) {
-            const dataTransfer = new DataTransfer();
             const filesArray = Array.from(fileInput.files);
             
             console.log('Files before removal:', filesArray.map(f => f.name));
             console.log('Removing file at index:', index, 'which is:', filesArray[index]?.name);
             
-            // Add all files except the one at the specified index
-            filesArray.forEach((file, i) => {
-                if (i !== index) {
-                    dataTransfer.items.add(file);
-                }
+            // Remove from currentFiles array
+            currentFiles.splice(index, 1);
+            
+            // Create new DataTransfer with remaining files
+            const dataTransfer = new DataTransfer();
+            currentFiles.forEach(file => {
+                dataTransfer.items.add(file);
             });
             
             // Update the file input with the new file list

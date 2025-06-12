@@ -1,0 +1,4 @@
+{
+    "debug.internalConsoleOptions": "openOnSessionStart",
+    "python.defaultInterpreterPath": "./.venv/Scripts/python.exe"
+}

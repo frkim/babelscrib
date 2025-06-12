@@ -1,0 +1,43 @@
+Azure est une offre d'hébergement (applications et données) et de services (workflow, stockage et synchronisation des données, bus de messages, contacts…).
+
+La plateforme Azure repose sur l'infrastructure de Microsoft contenant plus de 4 millions de serveurs[1],[2].
+
+Un ensemble d'API permet d'utiliser et d'accéder à cette plate-forme et aux services associés. Ces API sont exposées au travers d'un portail web (https://portal.azure.com [archive]) qui permet de gérer l'ensemble des services Azure. Cependant, pour une utilisation plus opérationnelle, il est recommandé d'utiliser « Azure (Remote) PowerShell » qui permet d'effectuer des actions plus granulaires, scriptables et pouvant être regroupées dans une boîte à outils.
+
+Un environnement d'exécution (le « Live Operating Environment ») permet une intégration étroite avec les principaux systèmes d'exploitation existants (Windows, Mac OS et Windows Phone).
+
+La plate-forme Windows Azure correspond aux offres d'informatique en nuage publiques de type PaaS (maintenant) et IaaS de Microsoft. Elle est composée des éléments suivants:
+
+Microsoft Azure :
+Un service d'authentification unifié (Entra ID), anciennement connu sous le nom d'Azure Active Directory (Azure AD). C'est un service de gestion des identités et des accès. Il permet aux entreprises de sécuriser l'accès à leurs applications, leurs ressources cloud et leurs données, tout en simplifiant l'expérience utilisateur et l'administration. Entra ID offre des fonctionnalités telles que l'authentification unique (SSO), la gestion des utilisateurs et des groupes, la gouvernance des identités, ainsi que la protection contre les menaces avec l'authentification multi-facteur.
+les WebApps (PaaS). On peut y déployer (via FTP, WebDeploy, Git ou Team Foundation Services) des applications Web en PHP, Node.js, ASP.NET et plus généralement tout ce qui tourne sous Internet Information Services (IIS) 7.5. Certaines applications prêtes à l'emploi telles que des moteurs de CMS et blogs en PHP ou ASP.NET sont également disponibles. On peut associer à un site Web une base de données relationnelles qui peut être
+Windows Azure SQL Database
+MySQL
+les rôles applicatifs (services cloud, de type PaaS):
+Web Role (pour exécuter des applications Web dans IIS)
+Worker Role (pour faire tourner l'équivalent de services Windows)
+Quand les deux rôles précédents ne conviennent pas, il est également possible de charger soi-même une image de machine virtuelle. Il s'agit du VM Role. Il est à noter que ces instances de VM role sont sans état (stateless) à savoir que si la machine virtuelle redémarre, elle repart de l'image qu'on lui a fournie initialement.
+Les machines virtuelles dont l'état est persistant (IaaS) qui peuvent être sous différents types de systèmes d'exploitation:
+Windows Server. On peut typiquement y héberger des composants logiciels tels que SharePoint Server, SQL Server ou Active Directory, ou plus généralement des logiciels qui tournent dans ces environnements.
+Linux. Ces distributions sont proposées par des partenaires de Microsoft et s'exécutent au sein de la plate-forme Windows Azure.
+le réseau virtuel (IaaS) qui permet de configurer les plages d'adresses dans lesquelles les machines virtuelles, voire les instances de rôles seront hébergées. Le réseau virtuel peut également être connecté par réseau privé virtuel (VPN) au réseau de l'entreprise.
+Compte de stockage (Windows Azure storage) :
+les blobs (binary large object) : équivalent des fichiers
+les tables (non relationnelles) : ensembles de clefs/valeurs
+les queues qui sont une forme de MOM (Middleware Oriented Messages)
+le partage de fichiers, stockage qui peut être monté comme un partage réseau (Protocole SMB)
+les lecteurs (drives) qui permettent de voir depuis un rôle applicatif un disque virtuel (VHD) stocké dans un blob, appelé Page Blob (voir plus haut)
+Microsoft Azure propose également du stockage dit "Premium" stockage SSD qui peut être rattaché aux machines virtuelles.
+Windows Azure SQL database (anciennement appelée SQL Azure) est un serveur de bases de données relationnelles (l'équivalent du service SQL Server Database Services à demeure[3]). On utilise des bases de données en tant que service, et on n'a pas la vue sur des machines virtuelles, ce qui est très conforme à la notion de plate-forme en tant que service (PaaS).
+D'autres services de type middleware et gestion d'identité tels que :
+Le bus de services (Service Bus) : connectivité vers des Web Services qui ont une connexion sortante vers Internet (et non entrante). Cela autorise par exemple à une application hébergée dans des Web Roles ou Worker Roles de Windows Azure d'appeler des services Web à demeure[3] dans les locaux de l'entreprise, de façon à relier l'application Azure au reste du système d'information de l'entreprise[4].
+Windows Azure Active Directory : annuaire pour la gestion des identités qui peut être optionnellement lié à Windows Active Directory par réplication des comptes utilisateurs (sans les mots de passe car on dispose aussi de la fédération d'identité). Il s'agit ici d'un service commun avec Office 365.
+Access Control Services (ACS) : gestion du contrôle d'accès à Service Bus suivant des mécanismes standards tels que OAuth et les Simple Web Tokens (SWT) pour les services REST, ou encore des mécanismes à bases de revendications de type SAML, WS-Federation et WS-Trust pour l'accès à des services SOAP, ou plus généralement à une application Web. Cela permet typiquement à une application de recevoir des authentifications venant de services comme Facebook, Google, Windows Live, Yahoo! ou tout autre service OpenID ou encore WS-Federation tel qu'Active Directory (via Active Directory Federation Services ADFS V2).
+Cache: cache distribué en mémoire vive, utilisable pour stocker des objets sérialisables. Cela sert par exemple pour la session ASP.NET dans le cadre d'une ferme Web (un Web Role). Le cache distribué existe en tant que service prêt à l'emploi, mais également depuis juin 2012 en tant que service que l'on peut directement héberger dans les machines virtuelles (instances) des web roles et worker roles. L'avantage de cette seconde option est de ne pas consommer des ressources supplémentaires et d'utiliser plutôt la mémoire vive non utilisée des machines déjà en place. De plus cette deuxième version du cache distribuée peut être interfacée avec des clients de type memcache car elle propose le même protocole réseau au niveau binaire.
+Windows Azure Service Bus EAI et EDI: portage au fur et à mesure de fonctionnalités de BizTalk Server qui ont du sens dans le cloud.
+Microsoft Azure Marketplace :
+DataMarket : place de marché pour les données. Il s'agit à la fois d'un courtier de données au niveau commercial (fournisseurs et consommateurs de la données contractualisent chacun avec la place de marché) et au niveau technique (format de données AtomPub / OData au niveau de la consommation).
+Applications : place de marché pour les applications, services, composants, formations, services autour de la plate-forme Azure. La place de marché permet d'utiliser des solutions tiers directement sur la plateforme Azure.
+Windows Azure Mobile Services permet de créer les services Web et la base de données en nuage pour une application mobile telle que Windows 8 (tablettes), Windows Phone, iOS (iPhone, iPad), Android. Il est très simple d'utilisation et le code côté serveur s'écrit en Javascript. Outre l'exposition de la base de données sous forme de services Web de type REST, il permet également de gérer l'authentification avec les live ID, et aussi d'écrire des notifications de type push.
+Windows Azure Media Services est un service de gestion de médias tels que les vidéos et sons. Il permet typiquement de transcoder des vidéos, de les exposer sur Internet, d'exposer des chaînes en live.
+Hadoop On Azure est une distribution du célèbre Framework open source Apache Hadoop (dans le domaine du big data) sur Windows Azure (et sur Windows Server). Il inclut des services tels qu'HDFS, Map/Reduce en Java, Javascript, HIVE, PIG, Mahout, Pegasus, une console interactive en Javascript et pour les commandes HIVE, un pilote ODBC et un add-in Excel pour lire des tables HIVE.

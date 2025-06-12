@@ -32,12 +32,7 @@ The BabelScrib application now includes an integrated document translation featu
 - German (de)
 - Italian (it)
 - Portuguese (pt)
-- Chinese (zh)
-- Japanese (ja)
-- Korean (ko)
-- Arabic (ar)
-- Russian (ru)
-- Hindi (hi)
+- Polish (pl)
 
 ## Technical Implementation
 

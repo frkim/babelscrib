@@ -1,6 +1,20 @@
-Django
-djangorestframework
-azure-storage-blob
-python-dotenv
+# Core Django dependencies
+Django>=4.2,<5.0
+djangorestframework>=3.14
+
+# Azure dependencies
+azure-storage-blob>=12.19.0
 azure-ai-translation-document==1.0.0
-django-environ
+azure-identity>=1.15.0  # For managed identity authentication
+
+# Environment and configuration
+python-dotenv>=1.0.0
+django-environ>=0.11.0
+
+# Production server
+gunicorn>=21.2.0
+
+# Security and monitoring (recommended for production)
+django-cors-headers>=4.3.0  # If you need CORS support
+whitenoise>=6.6.0  # For serving static files
+psycopg2-binary>=2.9.7  # If using PostgreSQL

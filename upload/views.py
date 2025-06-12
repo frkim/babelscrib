@@ -6,6 +6,7 @@ from azure.core.exceptions import ResourceExistsError, AzureError, ResourceNotFo
 import os
 import logging
 from django.conf import settings
+from django.utils import timezone
 # Add translation service imports
 from lib.translation_service import create_translation_service
 from lib.config import get_config
@@ -17,6 +18,121 @@ from .models import Document
 from .user_utils import UserIsolationService, require_user_session
 
 logger = logging.getLogger(__name__)
+
+def debug_connection_string(connection_string):
+    """Debug helper to safely log connection string issues without exposing sensitive data"""
+    if not connection_string:
+        logger.error("Connection string is None or empty")
+        return False
+    
+    # Check for URL encoding issues
+    if '%' in connection_string:
+        logger.warning(f"Connection string contains URL encoding: {connection_string[:50]}...")
+        # Try to decode it
+        try:
+            decoded = urllib.parse.unquote(connection_string)
+            logger.info("Successfully decoded URL-encoded connection string")
+            return decoded
+        except Exception as e:
+            logger.error(f"Failed to decode connection string: {e}")
+            return False
+    
+    # Check for basic structure
+    if 'DefaultEndpointsProtocol' not in connection_string:
+        logger.error("Connection string doesn't contain DefaultEndpointsProtocol")
+        return False
+    
+    if 'AccountName' not in connection_string:
+        logger.error("Connection string doesn't contain AccountName")
+        return False
+        
+    logger.info("Connection string appears to be properly formatted")
+    return connection_string
+
+def health_check(request):
+    """
+    Health check endpoint for monitoring and probes.
+    Returns HTTP 200 if the application is healthy, 503 if unhealthy.
+    """
+    try:
+        # Check database connectivity
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        
+        # Check Azure Storage connectivity (optional - only if configured)
+        storage_healthy = True
+        connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        if connection_string:
+            try:
+                # Debug and fix connection string if needed
+                fixed_connection_string = debug_connection_string(connection_string)
+                if not fixed_connection_string:
+                    storage_healthy = False
+                else:
+                    blob_service_client = BlobServiceClient.from_connection_string(fixed_connection_string)
+                    # Try to list containers to verify connection
+                    list(blob_service_client.list_containers(results_per_page=5))
+            except Exception as e:
+                logger.warning(f"Azure Storage health check failed: {str(e)}")
+                storage_healthy = False
+        
+        # Build health status
+        health_status = {
+            'status': 'healthy',
+            'timestamp': timezone.now().isoformat(),
+            'checks': {
+                'database': 'ok',
+                'azure_storage': 'ok' if storage_healthy else 'warning'
+            }
+        }
+        
+        # Return 200 if all critical systems are healthy
+        # Storage warning is not critical as the app can still function
+        return JsonResponse(health_status, status=200)
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return JsonResponse({
+            'status': 'unhealthy',
+            'timestamp': timezone.now().isoformat(),
+            'error': str(e)
+        }, status=503)
+
+def readiness_check(request):
+    """
+    Readiness check endpoint for Kubernetes-style probes.
+    Returns HTTP 200 if the application is ready to serve traffic.
+    """
+    try:
+        # Check if all required environment variables are set
+        required_vars = ['SECRET_KEY']
+        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        
+        if missing_vars:
+            return JsonResponse({
+                'status': 'not_ready',
+                'timestamp': timezone.now().isoformat(),
+                'error': f'Missing required environment variables: {missing_vars}'
+            }, status=503)
+        
+        # Check database connectivity
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        
+        return JsonResponse({
+            'status': 'ready',
+            'timestamp': timezone.now().isoformat()
+        }, status=200)
+        
+    except Exception as e:
+        logger.error(f"Readiness check failed: {str(e)}")
+        return JsonResponse({
+            'status': 'not_ready',
+            'timestamp': timezone.now().isoformat(),
+            'error': str(e)
+        }, status=503)
 
 @csrf_exempt
 def upload_file(request):
@@ -55,8 +171,14 @@ def upload_file(request):
                 logger.error("Azure Storage connection string not found")
                 return JsonResponse({'error': 'Storage configuration missing'}, status=500)
             
+            # Debug and fix connection string if needed
+            fixed_connection_string = debug_connection_string(connection_string)
+            if not fixed_connection_string:
+                logger.error("Invalid Azure Storage connection string format")
+                return JsonResponse({'error': 'Storage configuration invalid'}, status=500)
+            
             # Initialize blob service client
-            blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+            blob_service_client = BlobServiceClient.from_connection_string(fixed_connection_string)
             
             # Define container name (you can make this configurable)
             container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME_SOURCE', 'source')
@@ -189,7 +311,7 @@ def translate_documents(request):
                 old_files_cleaned = old_target_cleanup.get('cleaned_files', 0)
                 old_files_found = old_target_cleanup.get('old_files_found', 0)
                 old_files_failed = old_target_cleanup.get('failed_cleanups', 0)
-                hours_threshold = old_target_cleanup.get('hours_threshold', 72)
+                hours_threshold = old_target_cleanup.get('hours_threshold', 24)
                 
                 if old_files_found > 0:
                     cleanup_message += f" {old_files_cleaned} old target files (older than {hours_threshold}h) were removed."
@@ -251,8 +373,14 @@ def download_file(request, filename):
             logger.error("Azure Storage connection string not found")
             raise Http404("Storage configuration missing")
         
+        # Debug and fix connection string if needed
+        fixed_connection_string = debug_connection_string(connection_string)
+        if not fixed_connection_string:
+            logger.error("Invalid Azure Storage connection string format")
+            raise Http404("Storage configuration invalid")
+        
         # Initialize blob service client
-        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        blob_service_client = BlobServiceClient.from_connection_string(fixed_connection_string)
         
         # Get target container name (where translated files are stored)
         container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME_TARGET', 'target')

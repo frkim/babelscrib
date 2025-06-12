@@ -1,6 +1,9 @@
 {% load static %}
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE h        .logo {
+            height: 80px;
+            width: auto;
+            margin-right: 20px;
+        }<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -28,14 +31,23 @@
             border-bottom: 2px solid #f0f0f0;
         }
         .logo {
-            height: 60px;
+            height: auto;
             width: auto;
-            margin-right: 20px;
+            margin-right: 0px;
         }
         .logo img {
             height: 100%;
             width: auto;
             object-fit: contain;
+            /* Improve image rendering quality for PNG/raster images */
+            image-rendering: auto;
+            /* For better scaling */
+            -webkit-image-smoothing: true;
+            -moz-image-smoothing: true;
+            -o-image-smoothing: true;
+            /* Prevent blurry scaling */
+            transform: translateZ(0);
+            -webkit-transform: translateZ(0);
         }
         .logo-link {
             display: inline-block;
@@ -56,7 +68,7 @@
             .logo {
                 margin-right: 0;
                 margin-bottom: 15px;
-                height: 50px;
+                height: 60px;
             }
         }
         .file-drop {
@@ -484,7 +496,7 @@
                 <p>Click here to select Documents button or drag and drop your files here</p>
                 <p><small>Supported formats: pdf, doc, docx, txt, pptx, md</small></p>
                 <p><small>Document size limit: ≤ 40MB per file • Up to 1000 files per batch • Total batch size ≤ 250MB</small></p>
-                <p><small><a href="https://learn.microsoft.com/en-us/azure/ai-services/translator/service-limits#asynchronous-batch-operation-limits" target="_blank" style="color: #007cba; text-decoration: none;">View all Azure AI Translator limits →</a></small></p>
+                <p><small><a id="azure-ai-limits-link" href="https://learn.microsoft.com/en-us/azure/ai-services/translator/service-limits#asynchronous-batch-operation-limits" target="_blank" style="color: #007cba; text-decoration: none;">View all Azure AI Translator limits →</a></small></p>
                 <div style="text-align: center; margin-top: 15px;">
                     <button type="button" class="btn" id="select-file-button" style="display: inline-block;">Select Documents</button>
                 </div>
@@ -544,5 +556,16 @@
     </div>
 
     <script src="{% static 'js/upload.js' %}"></script>
+    <script>
+    // Prevent file dialog when clicking the Azure AI Translator limits link
+    document.addEventListener('DOMContentLoaded', function() {
+        var link = document.getElementById('azure-ai-limits-link');
+        if (link) {
+            link.addEventListener('click', function(event) {
+                event.stopPropagation();
+            });
+        }
+    });
+    </script>
 </body>
 </html>
