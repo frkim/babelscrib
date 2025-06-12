@@ -27,11 +27,11 @@ jobs:
     
     permissions:
       id-token: write
-      contents: read
-
-    steps:
+      contents: read    steps:
     - name: Checkout code
-      uses: actions/checkout@v4    - name: Azure Login using OIDC
+      uses: actions/checkout@v4
+
+    - name: Azure Login using Service Principal
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
