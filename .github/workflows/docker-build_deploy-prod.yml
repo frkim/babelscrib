@@ -1,0 +1,126 @@
+name: Build and Deploy BabelScrib Application to Production
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    paths-ignore:
+      - 'infrastructure/**'
+  pull_request:
+    branches: [ "main", "master" ]
+    paths-ignore:
+      - 'infrastructure/**'
+  workflow_dispatch: # Manual trigger
+  release:
+    types: [published]
+
+env:
+  AZURE_CONTAINER_REGISTRY: '' # Will be set dynamically
+  IMAGE_NAME: babelscrib
+  IMAGE_TAG: prod
+  CONTAINER_APP_NAME: babelscrib
+  RESOURCE_GROUP_NAME: babelscrib-rg
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: prod
+    
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login using OIDC
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}   - name: Verify Infrastructure Exists
+      run: |
+        # Verify that the infrastructure has been deployed
+        if ! az group exists --name ${{ env.RESOURCE_GROUP_NAME }}; then
+          echo "❌ Resource group ${{ env.RESOURCE_GROUP_NAME }} does not exist!"
+          echo "Please run the infrastructure deployment workflow first."
+          exit 1
+        fi
+        
+        # Check if Container Apps Environment exists
+        if ! az containerapp env list --resource-group ${{ env.RESOURCE_GROUP_NAME }} --query "[0].name" -o tsv >/dev/null 2>&1; then
+          echo "❌ Container Apps Environment not found!"
+          echo "Please run the infrastructure deployment workflow first."
+          exit 1
+        fi
+        
+        echo "✅ Infrastructure verification passed"
+
+    - name: Get Container Registry Name
+      run: |
+        REGISTRY_NAME=$(az acr list --resource-group ${{ env.RESOURCE_GROUP_NAME }} --query "[0].name" -o tsv)
+        echo "AZURE_CONTAINER_REGISTRY=${REGISTRY_NAME}.azurecr.io" >> $GITHUB_ENV
+        echo "REGISTRY_NAME=${REGISTRY_NAME}" >> $GITHUB_ENV
+
+    - name: Build Docker Image
+      run: |
+        docker build . --file Dockerfile.prod --tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+        docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+        docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+    - name: Login to Azure Container Registry
+      run: |
+        az acr login --name ${{ env.REGISTRY_NAME }}
+
+    - name: Push Docker Image to ACR
+      run: |
+        docker push ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+        docker push ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+    - name: Deploy to Azure Container Apps
+      run: |
+        # Check if container app exists
+        if az containerapp show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP_NAME }} >/dev/null 2>&1; then
+          echo "Updating existing container app..."
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+            --image ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        else
+          echo "Creating new container app..."
+          
+          # Get the environment name
+          ENV_NAME=$(az containerapp env list --resource-group ${{ env.RESOURCE_GROUP_NAME }} --query "[0].name" -o tsv)
+          
+          az containerapp create \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+            --environment $ENV_NAME \
+            --image ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --target-port 8000 \
+            --ingress external \
+            --cpu 1.0 \
+            --memory 2Gi \
+            --min-replicas 2 \
+            --max-replicas 10 \
+            --registry-server ${{ env.AZURE_CONTAINER_REGISTRY }} \
+            --env-vars DJANGO_SETTINGS_MODULE=api.settings
+        fi
+
+    - name: Get Container App URL
+      run: |
+        APP_URL=$(az containerapp show \
+          --name ${{ env.CONTAINER_APP_NAME }} \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+          --query "properties.configuration.ingress.fqdn" -o tsv)
+        echo "✅ Production application deployed successfully!"
+        echo "🌐 Production URL: https://$APP_URL"
+        echo "APP_URL=https://$APP_URL" >> $GITHUB_ENV
+
+    - name: Production Deployment Summary
+      run: |
+        echo "## 🚀 Production Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment**: Production" >> $GITHUB_STEP_SUMMARY
+        echo "- **Image**: ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Container App**: ${{ env.CONTAINER_APP_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Resource Group**: ${{ env.RESOURCE_GROUP_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Production URL**: ${{ env.APP_URL }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Deployment Time**: $(date)" >> $GITHUB_STEP_SUMMARY
