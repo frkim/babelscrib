@@ -1,29 +1,29 @@
-name: Build and Deploy BabelScrib Application
+name: Build and Deploy BabelScrib Application to Production
 
 on:
   push:
-    branches: [ "dev" ]
+    branches: [ "main", "master" ]
     paths-ignore:
       - 'infrastructure/**'
   pull_request:
-    branches: [ "dev" ]
+    branches: [ "main", "master" ]
     paths-ignore:
       - 'infrastructure/**'
   workflow_dispatch: # Manual trigger
-  schedule:
-    - cron: '0 0 1 * *' # First day of every month at midnight UTC
+  release:
+    types: [published]
 
 env:
   AZURE_CONTAINER_REGISTRY: '' # Will be set dynamically
   IMAGE_NAME: babelscrib
-  IMAGE_TAG: latest
-  CONTAINER_APP_NAME: babelscrib-dev
+  IMAGE_TAG: prod
+  CONTAINER_APP_NAME: babelscrib
   RESOURCE_GROUP_NAME: babelscrib-rg
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    environment: dev
+    environment: prod
     
     permissions:
       id-token: write
@@ -31,12 +31,12 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4    - name: Azure Login using OIDC
+      uses: actions/checkout@v4
+
+    - name: Azure Login using OIDC
       uses: azure/login@v1
       with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-    - name: Verify Infrastructure Exists
+        creds: ${{ secrets.AZURE_CREDENTIALS }}   - name: Verify Infrastructure Exists
       run: |
         # Verify that the infrastructure has been deployed
         if ! az group exists --name ${{ env.RESOURCE_GROUP_NAME }}; then
@@ -62,7 +62,7 @@ jobs:
 
     - name: Build Docker Image
       run: |
-        docker build . --file Dockerfile --tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+        docker build . --file Dockerfile.prod --tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
         docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
         docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
@@ -97,10 +97,10 @@ jobs:
             --image ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
             --target-port 8000 \
             --ingress external \
-            --cpu 0.5 \
-            --memory 1Gi \
-            --min-replicas 1 \
-            --max-replicas 3 \
+            --cpu 1.0 \
+            --memory 2Gi \
+            --min-replicas 2 \
+            --max-replicas 10 \
             --registry-server ${{ env.AZURE_CONTAINER_REGISTRY }} \
             --env-vars DJANGO_SETTINGS_MODULE=api.settings
         fi
@@ -111,15 +111,16 @@ jobs:
           --name ${{ env.CONTAINER_APP_NAME }} \
           --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
           --query "properties.configuration.ingress.fqdn" -o tsv)
-        echo "✅ Application deployed successfully!"
-        echo "🌐 Application URL: https://$APP_URL"
+        echo "✅ Production application deployed successfully!"
+        echo "🌐 Production URL: https://$APP_URL"
         echo "APP_URL=https://$APP_URL" >> $GITHUB_ENV
 
-    - name: Deployment Summary
+    - name: Production Deployment Summary
       run: |
-        echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "## 🚀 Production Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment**: Production" >> $GITHUB_STEP_SUMMARY
         echo "- **Image**: ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Container App**: ${{ env.CONTAINER_APP_NAME }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Resource Group**: ${{ env.RESOURCE_GROUP_NAME }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Application URL**: ${{ env.APP_URL }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Production URL**: ${{ env.APP_URL }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Deployment Time**: $(date)" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,50 @@
+name: Full Deployment Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+      deploy_infrastructure:
+        description: 'Deploy infrastructure'
+        required: true
+        default: true
+        type: boolean
+      deploy_application:
+        description: 'Deploy application'
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  infrastructure:
+    if: ${{ github.event.inputs.deploy_infrastructure == 'true' }}
+    uses: ./.github/workflows/infrastructure-deploy.yml
+    secrets: inherit
+    with:
+      environment: ${{ github.event.inputs.environment }}
+
+  application:
+    if: ${{ github.event.inputs.deploy_application == 'true' }}
+    needs: infrastructure
+    uses: ./.github/workflows/docker-build_deploy-dev.yml
+    secrets: inherit
+
+  deployment-summary:
+    needs: [infrastructure, application]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - name: Deployment Pipeline Summary
+      run: |
+        echo "## 🚀 Full Deployment Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Infrastructure Deployment**: ${{ github.event.inputs.deploy_infrastructure == 'true' && (needs.infrastructure.result == 'success' && '✅ Success' || '❌ Failed') || '⏭️ Skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Application Deployment**: ${{ github.event.inputs.deploy_application == 'true' && (needs.application.result == 'success' && '✅ Success' || '❌ Failed') || '⏭️ Skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Pipeline Time**: $(date)" >> $GITHUB_STEP_SUMMARY
