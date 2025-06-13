@@ -7,12 +7,16 @@ import os
 import logging
 from django.conf import settings
 from django.utils import timezone
+import time
+import traceback
 # Add translation service imports
 from services.translation_service import create_translation_service
 from services.config import get_config
 import json
 import urllib.parse
 import mimetypes
+import uuid
+from datetime import datetime
 # User isolation imports
 from .models import Document
 from .user_utils import UserIsolationService, require_user_session
@@ -169,16 +173,32 @@ def upload_file(request):
             connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
             if not connection_string:
                 logger.error("Azure Storage connection string not found")
-                return JsonResponse({'error': 'Storage configuration missing'}, status=500)
+                return JsonResponse({
+                    'error': 'Storage configuration missing',
+                    'details': 'AZURE_STORAGE_CONNECTION_STRING environment variable not set',
+                    'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
+                }, status=500)
             
             # Debug and fix connection string if needed
             fixed_connection_string = debug_connection_string(connection_string)
             if not fixed_connection_string:
                 logger.error("Invalid Azure Storage connection string format")
-                return JsonResponse({'error': 'Storage configuration invalid'}, status=500)
+                return JsonResponse({
+                    'error': 'Storage configuration invalid',
+                    'details': 'Azure Storage connection string format is invalid',
+                    'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
+                }, status=500)
             
             # Initialize blob service client
-            blob_service_client = BlobServiceClient.from_connection_string(fixed_connection_string)
+            try:
+                blob_service_client = BlobServiceClient.from_connection_string(fixed_connection_string)
+            except Exception as init_error:
+                logger.error(f"Failed to initialize BlobServiceClient: {str(init_error)}")
+                return JsonResponse({
+                    'error': 'Storage configuration invalid',
+                    'details': f'Failed to initialize storage client: {str(init_error)}',
+                    'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
+                }, status=500)
             
             # Define container name (you can make this configurable)
             container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME_SOURCE', 'source')
@@ -186,21 +206,49 @@ def upload_file(request):
             # Create container if it doesn't exist
             try:
                 container_client = blob_service_client.get_container_client(container_name)
-                container_client.create_container()
-                logger.info(f"Created container: {container_name}")
+                
+                # Test container access first
+                try:
+                    container_exists = container_client.exists()
+                    logger.info(f"Container {container_name} exists: {container_exists}")
+                except Exception as access_error:
+                    logger.error(f"Failed to access container {container_name}: {str(access_error)}")
+                    return JsonResponse({
+                        'error': 'Storage configuration invalid',
+                        'details': f'Cannot access storage container "{container_name}": {str(access_error)}',
+                        'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
+                    }, status=500)
+                
+                if not container_exists:
+                    container_client.create_container()
+                    logger.info(f"Created container: {container_name}")
+                
             except ResourceExistsError:
                 # Container already exists, which is fine
                 logger.info(f"Container {container_name} already exists")
             except Exception as e:
-                logger.error(f"Error creating container: {str(e)}")
-                return JsonResponse({'error': 'Failed to create storage container'}, status=500)
+                logger.error(f"Error with container operations: {str(e)}")
+                return JsonResponse({
+                    'error': 'Storage configuration invalid',
+                    'details': f'Container operation failed: {str(e)}',
+                    'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
+                }, status=500)
             
             # Create user-specific blob name to ensure isolation
             user_blob_name = UserIsolationService.create_user_blob_name(email, file.name)
             
             # Get blob client and upload file with user-specific name
-            blob_client = blob_service_client.get_blob_client(container=container_name, blob=user_blob_name)
-            blob_client.upload_blob(file, overwrite=True)
+            try:
+                blob_client = blob_service_client.get_blob_client(container=container_name, blob=user_blob_name)
+                blob_client.upload_blob(file, overwrite=True)
+                logger.info(f"Successfully uploaded blob: {user_blob_name}")
+            except Exception as upload_error:
+                logger.error(f"Failed to upload blob {user_blob_name}: {str(upload_error)}")
+                return JsonResponse({
+                    'error': 'Storage configuration invalid',
+                    'details': f'Failed to upload file to storage: {str(upload_error)}',
+                    'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
+                }, status=500)
             
             # Save document record in database
             document = Document(
@@ -371,16 +419,32 @@ def download_file(request, filename):
         connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
         if not connection_string:
             logger.error("Azure Storage connection string not found")
-            raise Http404("Storage configuration missing")
+            return JsonResponse({
+                'error': 'Storage configuration missing',
+                'details': 'AZURE_STORAGE_CONNECTION_STRING environment variable not set',
+                'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
+            }, status=500)
         
         # Debug and fix connection string if needed
         fixed_connection_string = debug_connection_string(connection_string)
         if not fixed_connection_string:
             logger.error("Invalid Azure Storage connection string format")
-            raise Http404("Storage configuration invalid")
+            return JsonResponse({
+                'error': 'Storage configuration invalid',
+                'details': 'Azure Storage connection string format is invalid',
+                'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
+            }, status=500)
         
         # Initialize blob service client
-        blob_service_client = BlobServiceClient.from_connection_string(fixed_connection_string)
+        try:
+            blob_service_client = BlobServiceClient.from_connection_string(fixed_connection_string)
+        except Exception as init_error:
+            logger.error(f"Failed to initialize BlobServiceClient: {str(init_error)}")
+            return JsonResponse({
+                'error': 'Storage configuration invalid',
+                'details': f'Failed to initialize storage client: {str(init_error)}',
+                'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
+            }, status=500)
         
         # Get target container name (where translated files are stored)
         container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME_TARGET', 'target')
@@ -481,3 +545,407 @@ def list_user_files(request):
     except Exception as e:
         logger.error(f"Error listing files for user: {str(e)}")
         return JsonResponse({'error': 'Failed to list files'}, status=500)
+
+def test_azure_storage(request):
+    """
+    Comprehensive Azure Storage connectivity test.
+    Creates test files, verifies operations, and provides detailed error reporting.
+    Supports both JSON API responses and HTML template rendering.
+    """
+    # Check if this is an API request (AJAX) or a page request
+    is_api_request = (
+        request.headers.get('Content-Type') == 'application/json' or
+        request.headers.get('Accept') == 'application/json' or
+        request.is_ajax() if hasattr(request, 'is_ajax') else False
+    )
+    
+    # If it's a GET request without API headers, render the HTML template
+    if request.method == 'GET' and not is_api_request:
+        return render(request, 'upload/storage_test.html')
+    
+    test_results = {
+        'timestamp': timezone.now().isoformat(),
+        'connection_string_status': 'unknown',
+        'source_container_test': {},
+        'target_container_test': {},
+        'blob_operations': {},
+        'overall_status': 'failed',
+        'errors': [],
+        'details': []
+    }
+    
+    try:
+        # Test 1: Check connection string
+        test_results['details'].append("Testing Azure Storage connection string...")
+        connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        
+        if not connection_string:
+            test_results['errors'].append("AZURE_STORAGE_CONNECTION_STRING environment variable not found")
+            test_results['connection_string_status'] = 'missing'
+            return JsonResponse(test_results, status=500)
+        
+        # Debug and validate connection string
+        fixed_connection_string = debug_connection_string(connection_string)
+        if not fixed_connection_string:
+            test_results['errors'].append("Invalid Azure Storage connection string format")
+            test_results['connection_string_status'] = 'invalid'
+            return JsonResponse(test_results, status=500)
+        
+        test_results['connection_string_status'] = 'valid'
+        test_results['details'].append("Connection string validation passed")
+        
+        # Test 2: Initialize blob service client
+        test_results['details'].append("Initializing Azure Blob Service Client...")
+        try:
+            blob_service_client = BlobServiceClient.from_connection_string(fixed_connection_string)
+            test_results['details'].append("Blob Service Client initialized successfully")
+        except Exception as e:
+            error_msg = f"Failed to initialize Blob Service Client: {str(e)}"
+            test_results['errors'].append(error_msg)
+            test_results['details'].append(error_msg)
+            return JsonResponse(test_results, status=500)
+        
+        # Test 3: Test account connectivity
+        test_results['details'].append("Testing account connectivity...")
+        try:
+            account_info = blob_service_client.get_account_information()
+            test_results['details'].append(f"Account info retrieved: SKU={account_info.sku_name}, Kind={account_info.account_kind}")
+        except Exception as e:
+            error_msg = f"Failed to retrieve account information: {str(e)}"
+            test_results['errors'].append(error_msg)
+            test_results['details'].append(error_msg)
+            return JsonResponse(test_results, status=500)
+        
+        # Test 4: Test source container operations
+        source_container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME_SOURCE', 'source')
+        test_results['details'].append(f"Testing source container: {source_container_name}")
+        test_results['source_container_test'] = test_container_operations(
+            blob_service_client, source_container_name, "source"
+        )
+        
+        if test_results['source_container_test'].get('status') != 'success':
+            test_results['errors'].extend(test_results['source_container_test'].get('errors', []))
+        
+        # Test 5: Test target container operations
+        target_container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME_TARGET', 'target')
+        test_results['details'].append(f"Testing target container: {target_container_name}")
+        test_results['target_container_test'] = test_container_operations(
+            blob_service_client, target_container_name, "target"
+        )
+        
+        if test_results['target_container_test'].get('status') != 'success':
+            test_results['errors'].extend(test_results['target_container_test'].get('errors', []))
+        
+        # Test 6: Test blob operations (create, read, delete)
+        test_results['details'].append("Testing blob CRUD operations...")
+        test_results['blob_operations'] = test_blob_crud_operations(
+            blob_service_client, source_container_name
+        )
+        
+        if test_results['blob_operations'].get('status') != 'success':
+            test_results['errors'].extend(test_results['blob_operations'].get('errors', []))
+        
+        # Test 7: Test translation service configuration
+        test_results['details'].append("Testing translation service configuration...")
+        translation_test = test_translation_service_config()
+        test_results['translation_service'] = translation_test
+        
+        if translation_test.get('status') != 'success':
+            test_results['errors'].extend(translation_test.get('errors', []))
+        
+        # Determine overall status
+        if not test_results['errors']:
+            test_results['overall_status'] = 'success'
+            test_results['details'].append("All Azure Storage tests passed successfully!")
+            return JsonResponse(test_results, status=200)
+        else:
+            test_results['overall_status'] = 'failed'
+            test_results['details'].append(f"Tests completed with {len(test_results['errors'])} errors")
+            return JsonResponse(test_results, status=500)
+            
+    except Exception as e:
+        error_msg = f"Unexpected error during storage test: {str(e)}"
+        test_results['errors'].append(error_msg)
+        test_results['details'].append(error_msg)
+        test_results['overall_status'] = 'failed'
+        
+        # Add stack trace for debugging
+        test_results['stack_trace'] = traceback.format_exc()
+        
+        logger.error(f"Azure Storage test failed: {error_msg}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        
+        return JsonResponse(test_results, status=500)
+
+def test_container_operations(blob_service_client, container_name, container_type):
+    """Test container-specific operations."""
+    result = {
+        'container_name': container_name,
+        'container_type': container_type,
+        'status': 'failed',
+        'operations': {},
+        'errors': [],
+        'details': []
+    }
+    
+    try:
+        container_client = blob_service_client.get_container_client(container_name)
+        
+        # Test 1: Check if container exists
+        result['details'].append(f"Checking if container '{container_name}' exists...")
+        try:
+            container_exists = container_client.exists()
+            result['operations']['exists_check'] = 'success'
+            result['details'].append(f"Container exists: {container_exists}")
+        except Exception as e:
+            error_msg = f"Failed to check container existence: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['exists_check'] = 'failed'
+            result['details'].append(error_msg)
+            return result
+        
+        # Test 2: Create container if it doesn't exist
+        if not container_exists:
+            result['details'].append(f"Creating container '{container_name}'...")
+            try:
+                container_client.create_container()
+                result['operations']['create'] = 'success'
+                result['details'].append(f"Container '{container_name}' created successfully")
+            except Exception as e:
+                error_msg = f"Failed to create container: {str(e)}"
+                result['errors'].append(error_msg)
+                result['operations']['create'] = 'failed'
+                result['details'].append(error_msg)
+                return result
+        else:
+            result['operations']['create'] = 'not_needed'
+            result['details'].append(f"Container '{container_name}' already exists")
+        
+        # Test 3: List blobs in container
+        result['details'].append(f"Listing blobs in container '{container_name}'...")
+        try:
+            blob_list = list(container_client.list_blobs(results_per_page=5))
+            result['operations']['list_blobs'] = 'success'
+            result['details'].append(f"Found {len(blob_list)} blobs in container")
+            result['blob_count'] = len(blob_list)
+        except Exception as e:
+            error_msg = f"Failed to list blobs: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['list_blobs'] = 'failed'
+            result['details'].append(error_msg)
+            return result
+        
+        # Test 4: Get container properties
+        result['details'].append(f"Getting container properties for '{container_name}'...")
+        try:
+            properties = container_client.get_container_properties()
+            result['operations']['get_properties'] = 'success'
+            result['details'].append(f"Container properties retrieved successfully")
+            result['container_properties'] = {
+                'creation_time': properties.creation_time.isoformat() if properties.creation_time else None,
+                'last_modified': properties.last_modified.isoformat() if properties.last_modified else None,
+                'lease_status': properties.lease.status if properties.lease else None,
+                'public_access': properties.public_access
+            }
+        except Exception as e:
+            error_msg = f"Failed to get container properties: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['get_properties'] = 'failed'
+            result['details'].append(error_msg)
+            return result
+        
+        result['status'] = 'success'
+        return result
+        
+    except Exception as e:
+        error_msg = f"Unexpected error in container operations: {str(e)}"
+        result['errors'].append(error_msg)
+        result['details'].append(error_msg)
+        return result
+
+def test_blob_crud_operations(blob_service_client, container_name):
+    """Test blob create, read, update, delete operations."""
+    result = {
+        'status': 'failed',
+        'operations': {},
+        'errors': [],
+        'details': []
+    }
+    
+    test_blob_name = f"test-blob-{uuid.uuid4().hex[:8]}-{int(time.time())}.txt"
+    test_content = f"Test blob content created at {datetime.now().isoformat()}"
+    
+    try:
+        blob_client = blob_service_client.get_blob_client(container=container_name, blob=test_blob_name)
+        
+        # Test 1: Create/Upload blob
+        result['details'].append(f"Creating test blob: {test_blob_name}")
+        try:
+            blob_client.upload_blob(test_content, overwrite=True)
+            result['operations']['create'] = 'success'
+            result['details'].append(f"Test blob created successfully")
+        except Exception as e:
+            error_msg = f"Failed to create test blob: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['create'] = 'failed'
+            result['details'].append(error_msg)
+            return result
+        
+        # Test 2: Check if blob exists
+        result['details'].append(f"Checking if test blob exists...")
+        try:
+            blob_exists = blob_client.exists()
+            result['operations']['exists_check'] = 'success'
+            result['details'].append(f"Blob exists: {blob_exists}")
+            
+            if not blob_exists:
+                result['errors'].append("Test blob was created but existence check failed")
+                return result
+        except Exception as e:
+            error_msg = f"Failed to check blob existence: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['exists_check'] = 'failed'
+            result['details'].append(error_msg)
+            return result
+        
+        # Test 3: Read blob content
+        result['details'].append(f"Reading test blob content...")
+        try:
+            blob_data = blob_client.download_blob()
+            downloaded_content = blob_data.readall().decode('utf-8')
+            result['operations']['read'] = 'success'
+            result['details'].append(f"Test blob content read successfully")
+            
+            # Verify content matches
+            if downloaded_content == test_content:
+                result['details'].append("Downloaded content matches uploaded content")
+                result['operations']['content_verification'] = 'success'
+            else:
+                error_msg = "Downloaded content does not match uploaded content"
+                result['errors'].append(error_msg)
+                result['operations']['content_verification'] = 'failed'
+                result['details'].append(error_msg)
+        except Exception as e:
+            error_msg = f"Failed to read test blob: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['read'] = 'failed'
+            result['details'].append(error_msg)
+            return result
+        
+        # Test 4: Get blob properties
+        result['details'].append(f"Getting test blob properties...")
+        try:
+            properties = blob_client.get_blob_properties()
+            result['operations']['get_properties'] = 'success'
+            result['details'].append(f"Test blob properties retrieved successfully")
+            result['blob_properties'] = {
+                'size': properties.size,
+                'content_type': properties.content_settings.content_type,
+                'creation_time': properties.creation_time.isoformat() if properties.creation_time else None,
+                'last_modified': properties.last_modified.isoformat() if properties.last_modified else None
+            }
+        except Exception as e:
+            error_msg = f"Failed to get blob properties: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['get_properties'] = 'failed'
+            result['details'].append(error_msg)
+        
+        # Test 5: Delete blob (cleanup)
+        result['details'].append(f"Deleting test blob...")
+        try:
+            blob_client.delete_blob()
+            result['operations']['delete'] = 'success'
+            result['details'].append(f"Test blob deleted successfully")
+        except Exception as e:
+            error_msg = f"Failed to delete test blob: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['delete'] = 'failed'
+            result['details'].append(error_msg)
+            # Don't return here - this is cleanup, not critical for the test
+        
+        # Test 6: Verify blob is deleted
+        result['details'].append(f"Verifying test blob deletion...")
+        try:
+            blob_exists_after_delete = blob_client.exists()
+            if not blob_exists_after_delete:
+                result['operations']['delete_verification'] = 'success'
+                result['details'].append("Test blob deletion verified")
+            else:
+                result['operations']['delete_verification'] = 'failed'
+                result['details'].append("Test blob still exists after deletion")
+        except Exception as e:
+            error_msg = f"Failed to verify blob deletion: {str(e)}"
+            result['details'].append(error_msg)
+            result['operations']['delete_verification'] = 'failed'
+        
+        # Check if all critical operations succeeded
+        critical_operations = ['create', 'exists_check', 'read', 'content_verification']
+        failed_critical = [op for op in critical_operations if result['operations'].get(op) != 'success']
+        
+        if not failed_critical:
+            result['status'] = 'success'
+            result['details'].append("All critical blob operations completed successfully")
+        else:
+            result['details'].append(f"Failed critical operations: {failed_critical}")
+        
+        return result
+        
+    except Exception as e:
+        error_msg = f"Unexpected error in blob CRUD operations: {str(e)}"
+        result['errors'].append(error_msg)
+        result['details'].append(error_msg)
+        return result
+
+def test_translation_service_config():
+    """Test translation service configuration."""
+    result = {
+        'status': 'failed',
+        'operations': {},
+        'errors': [],
+        'details': []
+    }
+    
+    try:
+        # Test 1: Check translation service configuration
+        result['details'].append("Testing translation service configuration...")
+        try:
+            config = get_config()
+            result['operations']['get_config'] = 'success'
+            result['details'].append("Translation config retrieved successfully")
+            
+            # Test config properties
+            result['config_details'] = {
+                'endpoint': config.endpoint,
+                'source_uri': config.source_uri,
+                'target_uri': config.target_uri,
+                'key_configured': bool(os.getenv('AZURE_TRANSLATION_KEY'))
+            }
+            
+        except Exception as e:
+            error_msg = f"Failed to get translation config: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['get_config'] = 'failed'
+            result['details'].append(error_msg)
+            return result
+        
+        # Test 2: Try to create translation service
+        result['details'].append("Testing translation service creation...")
+        try:
+            translation_service = create_translation_service()
+            result['operations']['create_service'] = 'success'
+            result['details'].append("Translation service created successfully")
+        except Exception as e:
+            error_msg = f"Failed to create translation service: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['create_service'] = 'failed'
+            result['details'].append(error_msg)
+            return result
+        
+        result['status'] = 'success'
+        return result
+        
+    except Exception as e:
+        error_msg = f"Unexpected error in translation service test: {str(e)}"
+        result['errors'].append(error_msg)
+        result['details'].append(error_msg)
+        return result
