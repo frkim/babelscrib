@@ -76,6 +76,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Store current files for accumulation
+    let currentFiles = [];
+
     // Show file dialog when select button is clicked
     selectFileButton.addEventListener('click', function(e) {
         console.log('Select Document button clicked');
@@ -95,7 +98,12 @@ document.addEventListener('DOMContentLoaded', function() {
             return; // Exit early to prevent file dialog
         }
         
-        // Only open file dialog if we didn't click on a remove button
+        // Don't open dialog if clicking on the button (it has its own handler)
+        if (e.target.closest('#select-file-button')) {
+            return;
+        }
+        
+        // Only open file dialog if we didn't click on a remove button or the select button
         console.log('Drop area clicked');
         e.preventDefault();
         e.stopPropagation();
@@ -105,6 +113,22 @@ document.addEventListener('DOMContentLoaded', function() {
     // When files are selected, update the drop area and prepare for upload
     fileInput.addEventListener('change', function() {
         if (fileInput.files.length > 0) {
+            const newFiles = Array.from(fileInput.files);
+            
+            // Add new files to current selection (avoid duplicates by name and size)
+            newFiles.forEach(file => {
+                if (!currentFiles.some(f => f.name === file.name && f.size === file.size)) {
+                    currentFiles.push(file);
+                }
+            });
+            
+            // Update the file input with all accumulated files
+            const dataTransfer = new DataTransfer();
+            currentFiles.forEach(file => {
+                dataTransfer.items.add(file);
+            });
+            fileInput.files = dataTransfer.files;
+            
             updateFileDisplay(fileInput.files);
         }
     });
@@ -136,13 +160,13 @@ document.addEventListener('DOMContentLoaded', function() {
     uploadForm.addEventListener('submit', function(e) {
         e.preventDefault();
         if (!isValidEmail(emailInput.value)) {
-            showEmailError('Please enter a valid email address');
+            showEmailError(window.BabelScribI18n ? window.BabelScribI18n.t('please_enter_valid_email') : 'Please enter a valid email address');
             return;
         }
         if (fileInput.files.length > 0) {
             uploadMultipleFiles(Array.from(fileInput.files));
         } else {
-            uploadStatus.textContent = 'Please select files first.';
+            uploadStatus.textContent = window.BabelScribI18n ? window.BabelScribI18n.t('please_select_files_first') : 'Please select files first.';
         }
     });
 
@@ -163,19 +187,32 @@ document.addEventListener('DOMContentLoaded', function() {
         const dt = e.dataTransfer;
         const files = dt.files;
         if (files.length > 0) {
-            // Create a DataTransfer to set fileInput.files
+            const newFiles = Array.from(files);
+            
+            // Add new files to current selection (avoid duplicates by name and size)
+            newFiles.forEach(file => {
+                if (!currentFiles.some(f => f.name === file.name && f.size === file.size)) {
+                    currentFiles.push(file);
+                }
+            });
+            
+            // Update the file input with all accumulated files
             const dataTransfer = new DataTransfer();
-            Array.from(files).forEach(file => {
+            currentFiles.forEach(file => {
                 dataTransfer.items.add(file);
             });
             fileInput.files = dataTransfer.files;
-            updateFileDisplay(files);
+            
+            updateFileDisplay(fileInput.files);
         }
     }
 
     function updateFileDisplay(files) {
         if (files.length === 0) {
-            // Reset to original state
+            // Reset current files array
+            currentFiles = [];
+            
+            // Reset to original state with complete content
             fileDrop.innerHTML = `
                 <div style="display: flex; justify-content: center; gap: 18px; margin-bottom: 18px;">
                     <!-- PDF Icon -->
@@ -204,14 +241,39 @@ document.addEventListener('DOMContentLoaded', function() {
                         <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">...</text>
                     </svg>
                 </div>
-                <p>Click here to select files or drag and drop your files here</p>
+                <p>Click here to select Documents button or drag and drop your files here</p>
                 <p><small>Supported formats: pdf, doc, docx, txt, pptx, md</small></p>
+                <p><small>Document size limit: ≤ 40MB per file • Up to 1000 files per batch • Total batch size ≤ 250MB</small></p>
+                <p><small><a id="azure-ai-limits-link" href="https://learn.microsoft.com/en-us/azure/ai-services/translator/service-limits#asynchronous-batch-operation-limits" target="_blank" style="color: #007cba; text-decoration: none;">View all Azure AI Translator limits →</a></small></p>
+                <div style="text-align: center; margin-top: 15px;">
+                    <button type="button" class="btn" id="select-file-button" style="display: inline-block;">Select Documents</button>
+                </div>
             `;
+            
+            // Re-attach event listener for the new select button
+            const newSelectButton = document.getElementById('select-file-button');
+            if (newSelectButton) {
+                newSelectButton.addEventListener('click', function(e) {
+                    console.log('Select Document button clicked');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openFileDialog();
+                });
+            }
+            
+            // Re-attach event listener for the Azure AI limits link to prevent file dialog
+            const newLink = document.getElementById('azure-ai-limits-link');
+            if (newLink) {
+                newLink.addEventListener('click', function(event) {
+                    event.stopPropagation();
+                });
+            }
+            
             return;
         }
 
         // Create file list display
-        let html = '<p><strong>Selected ' + files.length + ' file(s):</strong></p>';
+        let html = '<p><strong>' + (window.BabelScribI18n ? window.BabelScribI18n.t('selected_files', {count: files.length}) : 'Selected ' + files.length + ' file(s)') + ':</strong></p>';
         html += '<div class="file-list">';
         
         Array.from(files).forEach((file, index) => {
@@ -244,7 +306,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         html += '</div>';
-        html += '<p><small>Click to select different files</small></p>';
+        html += '<p><small>' + (window.BabelScribI18n ? window.BabelScribI18n.t('click_add_documents') : 'Click here to add other documents') + '</small></p>';
         
         fileDrop.innerHTML = html;
     }
@@ -336,17 +398,18 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('removeFileByIndex called with index:', index, 'total files:', fileInput.files.length);
         
         if (fileInput.files && fileInput.files.length > 0) {
-            const dataTransfer = new DataTransfer();
             const filesArray = Array.from(fileInput.files);
             
             console.log('Files before removal:', filesArray.map(f => f.name));
             console.log('Removing file at index:', index, 'which is:', filesArray[index]?.name);
             
-            // Add all files except the one at the specified index
-            filesArray.forEach((file, i) => {
-                if (i !== index) {
-                    dataTransfer.items.add(file);
-                }
+            // Remove from currentFiles array
+            currentFiles.splice(index, 1);
+            
+            // Create new DataTransfer with remaining files
+            const dataTransfer = new DataTransfer();
+            currentFiles.forEach(file => {
+                dataTransfer.items.add(file);
             });
             
             // Update the file input with the new file list
@@ -368,7 +431,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function uploadMultipleFiles(files) {
-        uploadStatus.innerHTML = '<p>Uploading ' + files.length + ' file(s)...</p><div id="upload-progress"></div>';
+        uploadStatus.innerHTML = '<p>' + (window.BabelScribI18n ? window.BabelScribI18n.t('uploading_files', {count: files.length}) : `Uploading ${files.length} file(s)...`) + '</p><div id="upload-progress"></div>';
         const progressDiv = document.getElementById('upload-progress');
         let completedUploads = 0;
         let totalFiles = files.length;
@@ -399,7 +462,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
                 .catch(error => {
                     completedUploads++;
-                    uploadResults.push({file: file.name, success: false, message: 'Upload failed: ' + error.message});
+                    uploadResults.push({file: file.name, success: false, message: (window.BabelScribI18n ? window.BabelScribI18n.t('upload_failed', {error: error.message}) : 'Upload failed: ' + error.message)});
                     
                     // Hide progress for this file (no tick for failed uploads)
                     hideFileProgress(index);
@@ -419,8 +482,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const successful = results.filter(r => r.success).length;
         const failed = results.filter(r => r.success === false).length;
         
-        let html = `<h4>Upload Complete!</h4>`;
-        html += `<p>Successful: ${successful}, Failed: ${failed}</p>`;
+        let html = `<h4>${window.BabelScribI18n ? window.BabelScribI18n.t('upload_complete') : 'Upload Complete!'}</h4>`;
+        html += `<p>${window.BabelScribI18n ? window.BabelScribI18n.t('successful_failed', {successful: successful, failed: failed}) : `Successful: ${successful}, Failed: ${failed}`}</p>`;
         
         if (failed > 0) {
             html += `<details><summary>Show failed uploads</summary><ul>`;
@@ -431,7 +494,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         if (successful > 0) {
-            html += `<details><summary>Show successful uploads</summary><ul>`;
+            html += `<details><summary>${window.BabelScribI18n ? window.BabelScribI18n.t('show_successful_uploads') : 'Show successful uploads'}</summary><ul>`;
             results.filter(r => r.success).forEach(r => {
                 html += `<li>${r.file}: ${r.message}</li>`;
             });
@@ -468,18 +531,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 const email = emailInput.value.trim();
 
                 if (!email) {
-                    showTranslationStatus('Please enter your email address.', 'error');
+                    showTranslationStatus(window.BabelScribI18n ? window.BabelScribI18n.t('please_enter_email_address') : 'Please enter your email address.', 'error');
                     return;
                 }
 
                 if (!targetLanguage) {
-                    showTranslationStatus('Please select a target language.', 'error');
+                    showTranslationStatus(window.BabelScribI18n ? window.BabelScribI18n.t('please_select_target_language') : 'Please select a target language.', 'error');
                     return;
                 }
 
                 // Disable button and show loading status with enhanced progress
                 launchTranslationBtn.disabled = true;
-                launchTranslationBtn.textContent = 'Translation in Progress...';
+                launchTranslationBtn.textContent = window.BabelScribI18n ? window.BabelScribI18n.t('translation_in_progress') : 'Translation in Progress...';
                 
                 // Start elapsed time tracking
                 const startTime = Date.now();
@@ -514,12 +577,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Helper function to get current progress message based on elapsed time
                 function getCurrentProgressMessage(seconds) {
-                    if (seconds < 2) return 'Starting translation process';
-                    if (seconds < 4) return 'Starting translation process - Preparing documents for translation';
-                    if (seconds < 6) return 'Starting translation process - Connecting to translation service';
-                    if (seconds < 8) return 'Starting translation process - Processing documents';
-                    if (seconds < 10) return 'Starting translation process - Translating content';
-                    return 'Starting translation process - Finalizing translation';
+                    if (!window.BabelScribI18n) {
+                        // Fallback to English if i18n not available
+                        if (seconds < 2) return 'Starting translation process';
+                        if (seconds < 4) return 'Starting translation process - Preparing documents for translation';
+                        if (seconds < 6) return 'Starting translation process - Connecting to translation service';
+                        if (seconds < 8) return 'Starting translation process - Processing documents';
+                        if (seconds < 10) return 'Starting translation process - Translating content';
+                        return 'Starting translation process - Finalizing translation';
+                    }
+                    
+                    // Use i18n translations
+                    const t = window.BabelScribI18n.t;
+                    if (seconds < 2) return t('starting_translation_process');
+                    if (seconds < 4) return t('preparing_documents');
+                    if (seconds < 6) return t('connecting_service');
+                    if (seconds < 8) return t('processing_documents');
+                    if (seconds < 10) return t('translating_content');
+                    return t('finalizing_translation');
                 }
 
                 // Prepare request data - email is now handled by session
@@ -561,27 +636,28 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     if (data.success) {
                         // Build main success message
-                        let successMessage = `Translation completed successfully! Status: ${data.data.status}. ` +
-                            `Total documents: ${data.data.total_documents}, ` +
-                            `Succeeded: ${data.data.succeeded_documents}, ` +
-                            `Failed: ${data.data.failed_documents}`;
+                        let successMessage = (window.BabelScribI18n ? window.BabelScribI18n.t('translation_completed_successfully') : 'Translation completed successfully!') + ' ' +
+                            (window.BabelScribI18n ? window.BabelScribI18n.t('status_label') : 'Status:') + ' ' + data.data.status + '. ' +
+                            (window.BabelScribI18n ? window.BabelScribI18n.t('total_documents', {total: data.data.total_documents}) : `Total documents: ${data.data.total_documents}`) + ', ' +
+                            (window.BabelScribI18n ? window.BabelScribI18n.t('succeeded_label', {count: data.data.succeeded_documents}) : `Succeeded: ${data.data.succeeded_documents}`) + ', ' +
+                            (window.BabelScribI18n ? window.BabelScribI18n.t('failed_label', {count: data.data.failed_documents}) : `Failed: ${data.data.failed_documents}`);
                         
                         // Add source cleanup information if available
                         if (data.data.source_cleanup) {
                             const cleanup = data.data.source_cleanup;
                             if (cleanup.cleanup_attempted) {
                                 if (cleanup.cleaned_files > 0) {
-                                    successMessage += `. Automatically removed ${cleanup.cleaned_files} source files`;
+                                    successMessage += ' ' + (window.BabelScribI18n ? window.BabelScribI18n.t('automatically_removed_source_files', {count: cleanup.cleaned_files}) : `Automatically removed ${cleanup.cleaned_files} source files.`);
                                     if (cleanup.failed_cleanups > 0) {
-                                        successMessage += ` (${cleanup.failed_cleanups} failed to clean)`;
+                                        successMessage += ' ' + (window.BabelScribI18n ? window.BabelScribI18n.t('failed_cleanup_count', {count: cleanup.failed_cleanups}) : `(${cleanup.failed_cleanups} failed to clean)`);
                                     }
                                 } else if (cleanup.failed_cleanups > 0) {
-                                    successMessage += `. Failed to automatically remove ${cleanup.failed_cleanups} source files`;
+                                    successMessage += ' ' + (window.BabelScribI18n ? window.BabelScribI18n.t('failed_to_remove_source_files', {count: cleanup.failed_cleanups}) : `Failed to automatically remove ${cleanup.failed_cleanups} source files`);
                                 } else {
-                                    successMessage += `. No source files found to remove`;
+                                    successMessage += ' ' + (window.BabelScribI18n ? window.BabelScribI18n.t('no_source_files_found') : 'No source files found to remove');
                                 }
                             } else {
-                                successMessage += `. Automatic source cleanup was not performed: ${cleanup.reason}`;
+                                successMessage += ' ' + (window.BabelScribI18n ? window.BabelScribI18n.t('cleanup_not_performed', {reason: cleanup.reason}) : `Automatic source cleanup was not performed: ${cleanup.reason}`);
                             }
                         }
                         
@@ -589,8 +665,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Show detailed results if available
                         if (data.data.documents && data.data.documents.length > 0) {
-                            let detailsHtml = '<br><details><summary>View translation details</summary><ul>';
-                            let downloadLinksHtml = '<br><div style="margin-top: 15px;"><h5>Download Translated Documents:</h5><ul style="list-style: none; padding-left: 0;">';
+                            let detailsHtml = '<br><details><summary>' + (window.BabelScribI18n ? window.BabelScribI18n.t('view_translation_details') : 'View translation details') + '</summary><ul>';
+                            let downloadLinksHtml = '<br><div style="margin-top: 15px;"><h5>' + (window.BabelScribI18n ? window.BabelScribI18n.t('download_translated_documents') : 'Download Translated Documents:') + '</h5><ul style="list-style: none; padding-left: 0;">';
                             let hasSuccessfulTranslations = false;
                             
                             data.data.documents.forEach(doc => {
@@ -605,7 +681,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     // Use translated filename if available, otherwise use source filename, fallback to ID
                                     const displayName = doc.translated_filename || doc.source_filename || doc.id;
                                     console.log('Display name for success:', displayName);
-                                    detailsHtml += `<li>✅ ${displayName}: Translated to ${doc.translated_to}</li>`;
+                                    detailsHtml += `<li>✅ ${displayName}: ` + (window.BabelScribI18n ? window.BabelScribI18n.t('translated_to', {language: doc.translated_to}) : `Translated to ${doc.translated_to}`) + '</li>';
                                     
                                     // Add download link for successful translations
                                     // Use the translated filename for the download URL
@@ -614,13 +690,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                     downloadLinksHtml += `
                                         <li style="margin: 8px 0; padding: 8px; background-color: #e8f5e8; border-radius: 4px; border-left: 3px solid #43a047;">
                                             <strong>${fileName}</strong><br>
-                                            <small>Translated to: ${doc.translated_to}</small><br>
+                                            <small>` + (window.BabelScribI18n ? window.BabelScribI18n.t('translated_to', {language: doc.translated_to}) : `Translated to: ${doc.translated_to}`) + `</small><br>
                                             <a href="${downloadUrl}" 
                                                download="${fileName}" 
                                                style="color: #2e7d32; text-decoration: none; font-weight: bold; margin-top: 5px; display: inline-block;"
                                                onmouseover="this.style.textDecoration='underline'" 
                                                onmouseout="this.style.textDecoration='none'">
-                                                📥 Download Translated Document
+                                                📥 ` + (window.BabelScribI18n ? window.BabelScribI18n.t('download_translated_document') : 'Download Translated Document') + `
                                             </a>
                                         </li>
                                     `;
@@ -628,7 +704,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     // Use source filename if available, fallback to ID
                                     const displayName = doc.source_filename || doc.id;
                                     console.log('Display name for failure:', displayName);
-                                    detailsHtml += `<li>❌ ${displayName}: ${doc.error ? doc.error.message : 'Failed'}</li>`;
+                                    detailsHtml += `<li>❌ ${displayName}: ${doc.error ? doc.error.message : (window.BabelScribI18n ? window.BabelScribI18n.t('translation_failed') : 'Failed')}</li>`;
                                 }
                             });
                             
@@ -646,7 +722,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             translationStatus.innerHTML = finalHtml;
                         }
                     } else {
-                        showTranslationStatus(`Translation failed: ${data.error}`, 'error');
+                        showTranslationStatus((window.BabelScribI18n ? window.BabelScribI18n.t('translation_failed_error', {error: data.error}) : `Translation failed: ${data.error}`), 'error');
                     }
                 })
                 .catch(error => {
@@ -655,21 +731,21 @@ document.addEventListener('DOMContentLoaded', function() {
                     clearInterval(timeInterval);
                     
                     console.error('Translation error:', error);
-                    const errorMessage = error.message || 'Translation request failed. Please try again.';
+                    const errorMessage = error.message || (window.BabelScribI18n ? window.BabelScribI18n.t('translation_request_failed') : 'Translation request failed. Please try again.');
                     
                     if (errorMessage.includes('Target files already exist') || errorMessage.includes('TargetFileAlreadyExists')) {
                         showTranslationStatus(
-                            'Previous translation files were found and cleared automatically. Please try the translation again.',
+                            window.BabelScribI18n ? window.BabelScribI18n.t('previous_files_cleared') : 'Previous translation files were found and cleared automatically. Please try the translation again.',
                             'error'
                         );
                     } else {
-                        showTranslationStatus(`Translation failed: ${errorMessage}`, 'error');
+                        showTranslationStatus((window.BabelScribI18n ? window.BabelScribI18n.t('translation_failed_error', {error: errorMessage}) : `Translation failed: ${errorMessage}`), 'error');
                     }
                 })
                 .finally(() => {
                     // Re-enable button
                     launchTranslationBtn.disabled = false;
-                    launchTranslationBtn.textContent = 'Launch Translation Process';
+                    launchTranslationBtn.textContent = window.BabelScribI18n ? window.BabelScribI18n.t('launch_translation_process') : 'Launch Translation Process';
                 });
             });
         }
@@ -717,11 +793,28 @@ document.addEventListener('DOMContentLoaded', function() {
         if (translationStatus) {
             // Format the message to always show "Starting translation process (X seconds)..."
             let displayMessage;
-            if (message === 'Starting translation process') {
-                displayMessage = `Starting translation process (${elapsedSeconds} seconds)`;
+            
+            if (!window.BabelScribI18n) {
+                // Fallback without i18n
+                if (message === 'Starting translation process') {
+                    displayMessage = `Starting translation process (${elapsedSeconds} seconds)`;
+                } else {
+                    displayMessage = `${message} (${elapsedSeconds} seconds)`;
+                }
             } else {
-                // For other messages, keep the elapsed time format
-                displayMessage = `${message} (${elapsedSeconds} seconds)`;
+                // Use i18n translations
+                const t = window.BabelScribI18n.t;
+                if (message === 'Starting translation process' || message === t('starting_translation_process')) {
+                    displayMessage = t('translation_process_seconds', {seconds: elapsedSeconds});
+                } else if (message.includes('Connecting to translation service') || message === t('connecting_service')) {
+                    displayMessage = t('connecting_service_seconds', {seconds: elapsedSeconds});
+                } else if (message.includes('Translating content') || message === t('translating_content')) {
+                    displayMessage = t('translating_content_seconds', {seconds: elapsedSeconds});
+                } else {
+                    // For other messages, keep the elapsed time format
+                    const secondsWord = window.BabelScribI18n.t(elapsedSeconds === 1 ? 'second' : 'seconds');
+                    displayMessage = `${message} (${elapsedSeconds} ${secondsWord})`;
+                }
             }
             
             const progressHtml = `
@@ -786,16 +879,16 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 return response.json().then(data => ({
                     success: false,
-                    message: data.error || 'Upload failed.'
+                    message: data.error || (window.BabelScribI18n ? window.BabelScribI18n.t('upload_failed_generic') : 'Upload failed.')
                 })).catch(() => ({
                     success: false,
-                    message: 'Upload failed.'
+                    message: window.BabelScribI18n ? window.BabelScribI18n.t('upload_failed_generic') : 'Upload failed.'
                 }));
             }
         })
         .catch(() => ({
             success: false,
-            message: 'Network error during upload.'
+            message: window.BabelScribI18n ? window.BabelScribI18n.t('network_error_upload') : 'Network error during upload.'
         }));
     }
 
@@ -834,7 +927,7 @@ document.addEventListener('DOMContentLoaded', function() {
             saveEmailToCookie(email);
             return true;
         } else {
-            showEmailError('Please enter a valid email address');
+            showEmailError(window.BabelScribI18n ? window.BabelScribI18n.t('please_enter_valid_email') : 'Please enter a valid email address');
             uploadButton.disabled = true;
             return false;
         }

@@ -1,0 +1,95 @@
+# English translation for BabelScrib
+# Copyright (C) 2025
+# This file is distributed under the same license as the BabelScrib package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: BabelScrib\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-06-13 12:00+0000\n"
+"PO-Revision-Date: 2025-06-13 12:00+0000\n"
+"Last-Translator: BabelScrib Team\n"
+"Language-Team: English\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Document Upload"
+msgstr "Document Upload"
+
+msgid "Go to Homepage"
+msgstr "Go to Homepage"
+
+msgid "BabelScrib Logo"
+msgstr "BabelScrib Logo"
+
+msgid "Language"
+msgstr "Language"
+
+msgid "Test Azure Storage Configuration"
+msgstr "Test Azure Storage Configuration"
+
+msgid "Storage Test"
+msgstr "Storage Test"
+
+msgid "Document Translator"
+msgstr "Document Translator"
+
+msgid "Click here to select Documents button or drag and drop your files here"
+msgstr "Click here to select Documents button or drag and drop your files here"
+
+msgid "Supported formats: pdf, doc, docx, txt, pptx, md"
+msgstr "Supported formats: pdf, doc, docx, txt, pptx, md"
+
+msgid "Document size limit: ≤ 40MB per file • Up to 1000 files per batch • Total batch size ≤ 250MB"
+msgstr "Document size limit: ≤ 40MB per file • Up to 1000 files per batch • Total batch size ≤ 250MB"
+
+msgid "View all Azure AI Translator limits"
+msgstr "View all Azure AI Translator limits"
+
+msgid "Select Documents"
+msgstr "Select Documents"
+
+msgid "Your email"
+msgstr "Your email"
+
+msgid "Upload"
+msgstr "Upload"
+
+msgid "Document Translation"
+msgstr "Document Translation"
+
+msgid "Translate to"
+msgstr "Translate to"
+
+msgid "English"
+msgstr "English"
+
+msgid "Spanish"
+msgstr "Spanish"
+
+msgid "French"
+msgstr "French"
+
+msgid "German"
+msgstr "German"
+
+msgid "Italian"
+msgstr "Italian"
+
+msgid "Portuguese"
+msgstr "Portuguese"
+
+msgid "Polish"
+msgstr "Polish"
+
+msgid "Source language"
+msgstr "Source language"
+
+msgid "Auto-detect"
+msgstr "Auto-detect"
+
+msgid "Note: Original uploaded files are automatically removed after translation is complete. Old translated documents (older than 24 hours) are automatically cleaned up when starting a new translation."
+msgstr "Note: Original uploaded files are automatically removed after translation is complete. Old translated documents (older than 24 hours) are automatically cleaned up when starting a new translation."
