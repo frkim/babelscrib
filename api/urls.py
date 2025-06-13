@@ -2,7 +2,7 @@ from django.urls import path
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
-from upload.views import upload_file, index as upload_page, translate_documents, download_file, list_user_files, health_check, readiness_check
+from upload.views import upload_file, index as upload_page, translate_documents, download_file, list_user_files, health_check, readiness_check, test_azure_storage
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -14,6 +14,8 @@ urlpatterns = [
     # Health check endpoints
     path('health/', health_check, name='health_check'),
     path('ready/', readiness_check, name='readiness_check'),
+    # Storage test endpoint
+    path('test-azure-storage/', test_azure_storage, name='test_azure_storage'),
 ]
 
 # Serve static files during development and when DEBUG=True
