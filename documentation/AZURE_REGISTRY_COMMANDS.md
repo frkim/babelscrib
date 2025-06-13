@@ -3,7 +3,7 @@
 ## Registry Information
 - **Registry URL**: `babelscrib.azurecr.io`
 - **Username**: `babelscrib`
-- **Password**: `k+2awHP1VmMTYG3tsMFcofPCtn7aBNiP1J3yIXdjq0+ACRCTA1EA`
+- **Password**: `YOUR_REGISTRY_KEY`
 
 ## Docker Commands
 
@@ -40,7 +40,7 @@ docker push babelscrib:prod
 
 ```bash
 # Login
-docker login babelscrib.azurecr.io -u babelscrib -p "k+2awHP1VmMTYG3tsMFcofPCtn7aBNiP1J3yIXdjq0+ACRCTA1EA"
+docker login babelscrib.azurecr.io -u babelscrib -p "YOUR_REGISTRY_KEY"
 
 # Build and push production image (recommended)
 docker build -t babelscrib:prod -f Dockerfile.prod .
