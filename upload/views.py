@@ -7,6 +7,8 @@ import os
 import logging
 from django.conf import settings
 from django.utils import timezone
+from services.translation_service import create_translation_service
+from services.config import get_config
 import json
 import urllib.parse
 import mimetypes
