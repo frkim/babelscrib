@@ -1,464 +1,197 @@
-{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Azure Storage Test - BabelScrib</title>
-    
-    <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="{% static 'images/favicon.ico' %}">
-    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'images/favicon-32x32.png' %}">
-    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'images/favicon-16x16.png' %}">
-    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'images/apple-touch-icon.png' %}">
-    <link rel="manifest" href="{% static 'images/site.webmanifest' %}">
-    
+    <title>Azure Storage Diagnostics - BabelScrib</title>
+    <link rel="stylesheet" href="/static/css/style.css">
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
-            line-height: 1.6;
-        }
-        .container {
+        .diagnostics-container {
             max-width: 1200px;
             margin: 0 auto;
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #f0f0f0;
-        }
-        .logo {
-            height: 60px;
-            margin-right: 20px;
-        }
-        h1 {
-            color: #333;
-            margin: 0;
-        }
-        .test-button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 25px;
-            font-size: 16px;
-            cursor: pointer;
-            margin-bottom: 30px;
-            transition: transform 0.2s;
-        }
-        .test-button:hover {
-            transform: translateY(-2px);
-        }
-        .test-button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .loading {
-            display: none;
-            text-align: center;
             padding: 20px;
-            color: #666;
-        }
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 10px;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .results {
-            display: none;
-            margin-top: 20px;
-        }
-        .status-badge {
-            display: inline-block;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-weight: bold;
-            margin-bottom: 15px;
-        }
-        .status-success {
-            background-color: #d4edda;
-            color: #155724;
-        }
-        .status-failed {
-            background-color: #f8d7da;
-            color: #721c24;
         }
         .test-section {
             background: #f8f9fa;
-            border: 1px solid #e9ecef;
+            border: 1px solid #dee2e6;
             border-radius: 8px;
+            margin: 20px 0;
             padding: 20px;
-            margin-bottom: 20px;
         }
-        .test-section h3 {
-            margin-top: 0;
-            color: #495057;
-            border-bottom: 1px solid #dee2e6;
-            padding-bottom: 10px;
+        .test-section.success {
+            background: #d4edda;
+            border-color: #c3e6cb;
         }
+        .test-section.error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .test-section.warning {
+            background: #fff3cd;
+            border-color: #ffeaa7;
+        }
+        .test-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+        .status-icon {
+            margin-right: 10px;
+            font-size: 1.5em;
+        }
+        .status-icon.success { color: #28a745; }
+        .status-icon.error { color: #dc3545; }
+        .status-icon.warning { color: #ffc107; }
+        .status-icon.info { color: #17a2b8; }
         .test-details {
-            background: white;
-            border: 1px solid #e9ecef;
-            border-radius: 5px;
-            padding: 15px;
             margin-top: 10px;
         }
-        .operation-status {
-            display: inline-block;
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: bold;
-            margin-left: 10px;
-        }
-        .op-success {
-            background-color: #d1ecf1;
-            color: #0c5460;
-        }
-        .op-failed {
-            background-color: #f5c6cb;
-            color: #721c24;
-        }
-        .op-not-needed {
-            background-color: #fff3cd;
-            color: #856404;
-        }
-        .details-list {
-            background: #f8f9fa;
-            border-left: 4px solid #667eea;
-            padding: 10px 15px;
-            margin: 10px 0;
-        }
-        .details-list li {
-            margin: 5px 0;
-        }
-        .error-list {
-            background: #f8d7da;
-            border-left: 4px solid #dc3545;
-            padding: 10px 15px;
-            margin: 10px 0;
-        }
-        .error-list li {
-            margin: 5px 0;
-            color: #721c24;
-        }
-        .config-details {
-            background: #e7f3ff;
-            border: 1px solid #b3d9ff;
-            border-radius: 5px;
-            padding: 15px;
-            margin: 10px 0;
-        }
-        .config-details dt {
-            font-weight: bold;
-            color: #495057;
-        }
-        .config-details dd {
-            margin-left: 20px;
-            margin-bottom: 10px;
-        }
-        .troubleshooting {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 5px;
-            padding: 15px;
-            margin: 20px 0;
-        }
-        .troubleshooting h4 {
-            margin-top: 0;
-            color: #856404;
-        }
-        pre {
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 5px;
-            padding: 15px;
+        .test-details pre {
+            background: #f1f3f4;
+            padding: 10px;
+            border-radius: 4px;
             overflow-x: auto;
             white-space: pre-wrap;
-            word-wrap: break-word;
+        }
+        .error-details {
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        .action-buttons {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 5px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .btn.secondary {
+            background-color: #6c757d;
+        }
+        .btn.secondary:hover {
+            background-color: #545b62;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <img src="{% static 'images/logo.png' %}" alt="BabelScrib Logo" class="logo">
-            <h1>Azure Storage Connectivity Test</h1>
-        </div>
-        
-        <p>This test will verify your Azure Storage configuration by testing connectivity, container operations, and blob CRUD operations.</p>
-        
-        <button class="test-button" onclick="runStorageTest()">Run Storage Test</button>
-        
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            <p>Running Azure Storage tests...</p>
-        </div>
-        
-        <div class="results" id="results">
-            <!-- Results will be populated here -->
-        </div>
-        
-        <div class="troubleshooting">
-            <h4>Common Issues and Solutions</h4>
-            <ul>
-                <li><strong>Connection String Missing:</strong> Ensure AZURE_STORAGE_CONNECTION_STRING environment variable is set</li>
-                <li><strong>Invalid Format:</strong> Check that the connection string contains DefaultEndpointsProtocol, AccountName, and AccountKey</li>
-                <li><strong>URL Encoding:</strong> Connection strings from environment variables might be URL-encoded</li>
-                <li><strong>Container Access:</strong> Verify that the storage account allows container creation and blob operations</li>
-                <li><strong>Network Issues:</strong> Check firewall rules and network connectivity to Azure Storage</li>
-            </ul>
-        </div>
-    </div>
+    <div class="diagnostics-container">
+        <h1>🔍 Azure Storage Diagnostics</h1>
+        <p>This page helps diagnose Azure Storage configuration and connectivity issues.</p>
 
-    <script>
-        async function runStorageTest() {
-            const button = document.querySelector('.test-button');
-            const loading = document.getElementById('loading');
-            const results = document.getElementById('results');
-            
-            // Show loading state
-            button.disabled = true;
-            loading.style.display = 'block';
-            results.style.display = 'none';
-            
-            try {
-                const response = await fetch('/test-azure-storage/', {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                });
-                
-                const data = await response.json();
-                displayResults(data);
-                
-            } catch (error) {
-                displayError('Network error: ' + error.message);
-            } finally {
-                // Hide loading state
-                button.disabled = false;
-                loading.style.display = 'none';
-                results.style.display = 'block';
-            }
-        }
-        
-        function displayResults(data) {
-            const results = document.getElementById('results');
-            let html = '';
-            
-            // Overall status
-            const statusClass = data.overall_status === 'success' ? 'status-success' : 'status-failed';
-            html += `<div class="status-badge ${statusClass}">Overall Status: ${data.overall_status.toUpperCase()}</div>`;
-            
-            // Timestamp
-            html += `<p><strong>Test completed at:</strong> ${new Date(data.timestamp).toLocaleString()}</p>`;
-            
-            // Connection string status
-            html += createTestSection('Connection String Test', {
-                status: data.connection_string_status === 'valid' ? 'success' : 'failed',
-                details: [`Connection string status: ${data.connection_string_status}`]
-            });
-            
-            // Source container test
-            if (data.source_container_test) {
-                html += createContainerSection('Source Container Test', data.source_container_test);
-            }
-            
-            // Target container test
-            if (data.target_container_test) {
-                html += createContainerSection('Target Container Test', data.target_container_test);
-            }
-            
-            // Blob operations test
-            if (data.blob_operations) {
-                html += createBlobOperationsSection('Blob Operations Test', data.blob_operations);
-            }
-            
-            // Translation service test
-            if (data.translation_service) {
-                html += createTranslationServiceSection('Translation Service Test', data.translation_service);
-            }
-            
-            // Errors
-            if (data.errors && data.errors.length > 0) {
-                html += '<div class="test-section">';
-                html += '<h3>Errors</h3>';
-                html += '<ul class="error-list">';
-                data.errors.forEach(error => {
-                    html += `<li>${error}</li>`;
-                });
-                html += '</ul></div>';
-            }
-            
-            // Stack trace (if available)
-            if (data.stack_trace) {
-                html += '<div class="test-section">';
-                html += '<h3>Stack Trace</h3>';
-                html += `<pre>${data.stack_trace}</pre>`;
-                html += '</div>';
-            }
-            
-            results.innerHTML = html;
-        }
-        
-        function createTestSection(title, data) {
-            let html = `<div class="test-section"><h3>${title}</h3>`;
-            
-            if (data.details) {
-                html += '<ul class="details-list">';
-                data.details.forEach(detail => {
-                    html += `<li>${detail}</li>`;
-                });
-                html += '</ul>';
-            }
-            
-            html += '</div>';
-            return html;
-        }
-        
-        function createContainerSection(title, data) {
-            let html = `<div class="test-section"><h3>${title}</h3>`;
-            
-            html += `<p><strong>Container:</strong> ${data.container_name}</p>`;
-            html += `<p><strong>Status:</strong> <span class="status-badge ${data.status === 'success' ? 'status-success' : 'status-failed'}">${data.status.toUpperCase()}</span></p>`;
-            
-            // Operations
-            if (data.operations) {
-                html += '<div class="test-details"><h4>Operations</h4>';
-                Object.entries(data.operations).forEach(([op, status]) => {
-                    const statusClass = status === 'success' ? 'op-success' : status === 'failed' ? 'op-failed' : 'op-not-needed';
-                    html += `<div>${op}: <span class="operation-status ${statusClass}">${status}</span></div>`;
-                });
-                html += '</div>';
-            }
-            
-            // Properties
-            if (data.container_properties) {
-                html += '<div class="config-details"><h4>Container Properties</h4><dl>';
-                Object.entries(data.container_properties).forEach(([key, value]) => {
-                    html += `<dt>${key}:</dt><dd>${value || 'N/A'}</dd>`;
-                });
-                html += '</dl></div>';
-            }
-            
-            // Details
-            if (data.details) {
-                html += '<div class="details-list"><h4>Details</h4><ul>';
-                data.details.forEach(detail => {
-                    html += `<li>${detail}</li>`;
-                });
-                html += '</ul></div>';
-            }
-            
-            html += '</div>';
-            return html;
-        }
-        
-        function createBlobOperationsSection(title, data) {
-            let html = `<div class="test-section"><h3>${title}</h3>`;
-            
-            html += `<p><strong>Status:</strong> <span class="status-badge ${data.status === 'success' ? 'status-success' : 'status-failed'}">${data.status.toUpperCase()}</span></p>`;
-            
-            // Operations
-            if (data.operations) {
-                html += '<div class="test-details"><h4>Operations</h4>';
-                Object.entries(data.operations).forEach(([op, status]) => {
-                    const statusClass = status === 'success' ? 'op-success' : 'op-failed';
-                    html += `<div>${op}: <span class="operation-status ${statusClass}">${status}</span></div>`;
-                });
-                html += '</div>';
-            }
-            
-            // Blob properties
-            if (data.blob_properties) {
-                html += '<div class="config-details"><h4>Test Blob Properties</h4><dl>';
-                Object.entries(data.blob_properties).forEach(([key, value]) => {
-                    html += `<dt>${key}:</dt><dd>${value || 'N/A'}</dd>`;
-                });
-                html += '</dl></div>';
-            }
-            
-            // Details
-            if (data.details) {
-                html += '<div class="details-list"><h4>Details</h4><ul>';
-                data.details.forEach(detail => {
-                    html += `<li>${detail}</li>`;
-                });
-                html += '</ul></div>';
-            }
-            
-            html += '</div>';
-            return html;
-        }
-        
-        function createTranslationServiceSection(title, data) {
-            let html = `<div class="test-section"><h3>${title}</h3>`;
-            
-            html += `<p><strong>Status:</strong> <span class="status-badge ${data.status === 'success' ? 'status-success' : 'status-failed'}">${data.status.toUpperCase()}</span></p>`;
-            
-            // Operations
-            if (data.operations) {
-                html += '<div class="test-details"><h4>Operations</h4>';
-                Object.entries(data.operations).forEach(([op, status]) => {
-                    const statusClass = status === 'success' ? 'op-success' : 'op-failed';
-                    html += `<div>${op}: <span class="operation-status ${statusClass}">${status}</span></div>`;
-                });
-                html += '</div>';
-            }
-            
-            // Config details
-            if (data.config_details) {
-                html += '<div class="config-details"><h4>Configuration</h4><dl>';
-                Object.entries(data.config_details).forEach(([key, value]) => {
-                    if (key === 'key_configured') {
-                        value = value ? 'Yes' : 'No';
-                    }
-                    html += `<dt>${key}:</dt><dd>${value || 'N/A'}</dd>`;
-                });
-                html += '</dl></div>';
-            }
-            
-            // Details
-            if (data.details) {
-                html += '<div class="details-list"><h4>Details</h4><ul>';
-                data.details.forEach(detail => {
-                    html += `<li>${detail}</li>`;
-                });
-                html += '</ul></div>';
-            }
-            
-            html += '</div>';
-            return html;
-        }
-        
-        function displayError(message) {
-            const results = document.getElementById('results');
-            results.innerHTML = `
-                <div class="test-section">
-                    <div class="status-badge status-failed">ERROR</div>
-                    <p>${message}</p>
-                </div>
-            `;
-        }
-    </script>
+        <div class="action-buttons">
+            <a href="/test-azure-storage/" class="btn">🔄 Run Diagnostics</a>
+            <a href="/test-azure-storage/?format=json" class="btn secondary">📋 View Raw JSON</a>
+            <a href="/" class="btn secondary">🏠 Back to Upload</a>
+        </div>
+
+        {% if test_results %}
+        <!-- Overall Status -->
+        <div class="test-section {% if test_results.overall_status == 'success' %}success{% else %}error{% endif %}">
+            <div class="test-title">
+                <span class="status-icon {% if test_results.overall_status == 'success' %}success{% else %}error{% endif %}">
+                    {% if test_results.overall_status == 'success' %}✅{% else %}❌{% endif %}
+                </span>
+                Overall Status: {% if test_results.overall_status == 'success' %}All Tests Passed{% else %}Some Tests Failed{% endif %}
+            </div>
+            {% if test_results.overall_status != 'success' %}
+            <div class="test-details">
+                <strong>Issues found:</strong> Review the failed tests below for specific problems and solutions.
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Connection Status -->
+        <div class="test-section {% if test_results.connection_string_status == 'valid' %}success{% else %}error{% endif %}">
+            <div class="test-title">
+                <span class="status-icon {% if test_results.connection_string_status == 'valid' %}success{% else %}error{% endif %}">
+                    {% if test_results.connection_string_status == 'valid' %}✅{% else %}❌{% endif %}
+                </span>
+                Connection String Validation
+            </div>
+            <div class="test-details">
+                <p><strong>Status:</strong> {{ test_results.connection_string_status|title }}</p>
+            </div>
+        </div>
+
+        <!-- Error Details -->
+        {% if test_results.errors %}
+        <div class="test-section error">
+            <div class="test-title">
+                <span class="status-icon error">❌</span>
+                Errors ({{ test_results.errors|length }})
+            </div>
+            <div class="test-details">
+                <ul>
+                {% for error in test_results.errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Test Details -->
+        {% if test_results.details %}
+        <div class="test-section">
+            <div class="test-title">
+                <span class="status-icon info">ℹ️</span>
+                Test Details
+            </div>
+            <div class="test-details">
+                <ol>
+                {% for detail in test_results.details %}
+                    <li>{{ detail }}</li>
+                {% endfor %}
+                </ol>
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <!-- No test results yet -->
+        <div class="test-section">
+            <div class="test-title">
+                <span class="status-icon info">ℹ️</span>
+                Ready to Test
+            </div>
+            <div class="test-details">
+                <p>Click "Run Diagnostics" above to test your Azure Storage configuration.</p>
+                <p>The test will:</p>
+                <ul>
+                    <li>Validate your storage connection string</li>
+                    <li>Check container accessibility</li>
+                    <li>Test blob upload/download operations</li>
+                    <li>Verify translation service configuration (if available)</li>
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="action-buttons">
+            <a href="/test-azure-storage/" class="btn">🔄 Run Diagnostics Again</a>
+            <a href="/" class="btn secondary">🏠 Back to Upload</a>
+        </div>
+
+        <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; color: #666;">
+            <p>BabelScrib Azure Storage Diagnostics | 
+            <a href="/test-azure-storage/?format=json">View JSON</a> | 
+            <a href="https://docs.microsoft.com/en-us/azure/storage/">Azure Storage Docs</a></p>
+        </footer>
+    </div>
 </body>
 </html>

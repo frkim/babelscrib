@@ -7,21 +7,23 @@ import os
 import logging
 from django.conf import settings
 from django.utils import timezone
-import time
-import traceback
-# Add translation service imports
-from services.translation_service import create_translation_service
-from services.config import get_config
 import json
 import urllib.parse
 import mimetypes
-import uuid
-from datetime import datetime
 # User isolation imports
 from .models import Document
 from .user_utils import UserIsolationService, require_user_session
 
 logger = logging.getLogger(__name__)
+
+# Add translation service imports (optional for testing)
+try:
+    from services.translation_service import create_translation_service
+    from services.config import get_config
+    TRANSLATION_AVAILABLE = True
+except ImportError:
+    TRANSLATION_AVAILABLE = False
+    logger.warning("Translation services not available - storage test will skip translation tests")
 
 def debug_connection_string(connection_string):
     """Debug helper to safely log connection string issues without exposing sensitive data"""
@@ -173,32 +175,16 @@ def upload_file(request):
             connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
             if not connection_string:
                 logger.error("Azure Storage connection string not found")
-                return JsonResponse({
-                    'error': 'Storage configuration missing',
-                    'details': 'AZURE_STORAGE_CONNECTION_STRING environment variable not set',
-                    'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
-                }, status=500)
+                return JsonResponse({'error': 'Storage configuration missing'}, status=500)
             
             # Debug and fix connection string if needed
             fixed_connection_string = debug_connection_string(connection_string)
             if not fixed_connection_string:
                 logger.error("Invalid Azure Storage connection string format")
-                return JsonResponse({
-                    'error': 'Storage configuration invalid',
-                    'details': 'Azure Storage connection string format is invalid',
-                    'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
-                }, status=500)
+                return JsonResponse({'error': 'Storage configuration invalid'}, status=500)
             
             # Initialize blob service client
-            try:
-                blob_service_client = BlobServiceClient.from_connection_string(fixed_connection_string)
-            except Exception as init_error:
-                logger.error(f"Failed to initialize BlobServiceClient: {str(init_error)}")
-                return JsonResponse({
-                    'error': 'Storage configuration invalid',
-                    'details': f'Failed to initialize storage client: {str(init_error)}',
-                    'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
-                }, status=500)
+            blob_service_client = BlobServiceClient.from_connection_string(fixed_connection_string)
             
             # Define container name (you can make this configurable)
             container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME_SOURCE', 'source')
@@ -206,49 +192,21 @@ def upload_file(request):
             # Create container if it doesn't exist
             try:
                 container_client = blob_service_client.get_container_client(container_name)
-                
-                # Test container access first
-                try:
-                    container_exists = container_client.exists()
-                    logger.info(f"Container {container_name} exists: {container_exists}")
-                except Exception as access_error:
-                    logger.error(f"Failed to access container {container_name}: {str(access_error)}")
-                    return JsonResponse({
-                        'error': 'Storage configuration invalid',
-                        'details': f'Cannot access storage container "{container_name}": {str(access_error)}',
-                        'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
-                    }, status=500)
-                
-                if not container_exists:
-                    container_client.create_container()
-                    logger.info(f"Created container: {container_name}")
-                
+                container_client.create_container()
+                logger.info(f"Created container: {container_name}")
             except ResourceExistsError:
                 # Container already exists, which is fine
                 logger.info(f"Container {container_name} already exists")
             except Exception as e:
-                logger.error(f"Error with container operations: {str(e)}")
-                return JsonResponse({
-                    'error': 'Storage configuration invalid',
-                    'details': f'Container operation failed: {str(e)}',
-                    'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
-                }, status=500)
+                logger.error(f"Error creating container: {str(e)}")
+                return JsonResponse({'error': 'Failed to create storage container'}, status=500)
             
             # Create user-specific blob name to ensure isolation
             user_blob_name = UserIsolationService.create_user_blob_name(email, file.name)
             
             # Get blob client and upload file with user-specific name
-            try:
-                blob_client = blob_service_client.get_blob_client(container=container_name, blob=user_blob_name)
-                blob_client.upload_blob(file, overwrite=True)
-                logger.info(f"Successfully uploaded blob: {user_blob_name}")
-            except Exception as upload_error:
-                logger.error(f"Failed to upload blob {user_blob_name}: {str(upload_error)}")
-                return JsonResponse({
-                    'error': 'Storage configuration invalid',
-                    'details': f'Failed to upload file to storage: {str(upload_error)}',
-                    'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
-                }, status=500)
+            blob_client = blob_service_client.get_blob_client(container=container_name, blob=user_blob_name)
+            blob_client.upload_blob(file, overwrite=True)
             
             # Save document record in database
             document = Document(
@@ -419,32 +377,16 @@ def download_file(request, filename):
         connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
         if not connection_string:
             logger.error("Azure Storage connection string not found")
-            return JsonResponse({
-                'error': 'Storage configuration missing',
-                'details': 'AZURE_STORAGE_CONNECTION_STRING environment variable not set',
-                'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
-            }, status=500)
+            raise Http404("Storage configuration missing")
         
         # Debug and fix connection string if needed
         fixed_connection_string = debug_connection_string(connection_string)
         if not fixed_connection_string:
             logger.error("Invalid Azure Storage connection string format")
-            return JsonResponse({
-                'error': 'Storage configuration invalid',
-                'details': 'Azure Storage connection string format is invalid',
-                'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
-            }, status=500)
+            raise Http404("Storage configuration invalid")
         
         # Initialize blob service client
-        try:
-            blob_service_client = BlobServiceClient.from_connection_string(fixed_connection_string)
-        except Exception as init_error:
-            logger.error(f"Failed to initialize BlobServiceClient: {str(init_error)}")
-            return JsonResponse({
-                'error': 'Storage configuration invalid',
-                'details': f'Failed to initialize storage client: {str(init_error)}',
-                'troubleshooting': 'Use /test-azure-storage/ endpoint for detailed diagnostics'
-            }, status=500)
+        blob_service_client = BlobServiceClient.from_connection_string(fixed_connection_string)
         
         # Get target container name (where translated files are stored)
         container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME_TARGET', 'target')
@@ -551,17 +493,14 @@ def test_azure_storage(request):
     Comprehensive Azure Storage connectivity test.
     Creates test files, verifies operations, and provides detailed error reporting.
     Supports both JSON API responses and HTML template rendering.
-    """
-    # Check if this is an API request (AJAX) or a page request
-    is_api_request = (
+    """    # Check if JSON format is explicitly requested
+    format_requested = request.GET.get('format', '').lower()
+    is_json_request = (
+        format_requested == 'json' or
         request.headers.get('Content-Type') == 'application/json' or
         request.headers.get('Accept') == 'application/json' or
-        request.is_ajax() if hasattr(request, 'is_ajax') else False
+        (hasattr(request, 'is_ajax') and request.is_ajax())
     )
-    
-    # If it's a GET request without API headers, render the HTML template
-    if request.method == 'GET' and not is_api_request:
-        return render(request, 'upload/storage_test.html')
     
     test_results = {
         'timestamp': timezone.now().isoformat(),
@@ -582,14 +521,15 @@ def test_azure_storage(request):
         if not connection_string:
             test_results['errors'].append("AZURE_STORAGE_CONNECTION_STRING environment variable not found")
             test_results['connection_string_status'] = 'missing'
-            return JsonResponse(test_results, status=500)
+            return _format_storage_test_response(test_results, is_json_request, request)
         
         # Debug and validate connection string
         fixed_connection_string = debug_connection_string(connection_string)
+        
         if not fixed_connection_string:
             test_results['errors'].append("Invalid Azure Storage connection string format")
             test_results['connection_string_status'] = 'invalid'
-            return JsonResponse(test_results, status=500)
+            return _format_storage_test_response(test_results, is_json_request, request)
         
         test_results['connection_string_status'] = 'valid'
         test_results['details'].append("Connection string validation passed")
@@ -603,18 +543,26 @@ def test_azure_storage(request):
             error_msg = f"Failed to initialize Blob Service Client: {str(e)}"
             test_results['errors'].append(error_msg)
             test_results['details'].append(error_msg)
-            return JsonResponse(test_results, status=500)
+            return _format_storage_test_response(test_results, is_json_request, request)
         
         # Test 3: Test account connectivity
         test_results['details'].append("Testing account connectivity...")
         try:
             account_info = blob_service_client.get_account_information()
-            test_results['details'].append(f"Account info retrieved: SKU={account_info.sku_name}, Kind={account_info.account_kind}")
+            # Handle both dict and object attribute access
+            if hasattr(account_info, 'sku_name'):
+                sku = account_info.sku_name
+                kind = account_info.account_kind
+            else:
+                # If it's a dict or has different structure
+                sku = getattr(account_info, 'sku_name', 'Unknown')
+                kind = getattr(account_info, 'account_kind', 'Unknown')
+            test_results['details'].append(f"Account info retrieved: SKU={sku}, Kind={kind}")
         except Exception as e:
             error_msg = f"Failed to retrieve account information: {str(e)}"
             test_results['errors'].append(error_msg)
             test_results['details'].append(error_msg)
-            return JsonResponse(test_results, status=500)
+            return _format_storage_test_response(test_results, is_json_request, request)
         
         # Test 4: Test source container operations
         source_container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME_SOURCE', 'source')
@@ -644,24 +592,31 @@ def test_azure_storage(request):
         
         if test_results['blob_operations'].get('status') != 'success':
             test_results['errors'].extend(test_results['blob_operations'].get('errors', []))
-        
-        # Test 7: Test translation service configuration
-        test_results['details'].append("Testing translation service configuration...")
-        translation_test = test_translation_service_config()
-        test_results['translation_service'] = translation_test
-        
-        if translation_test.get('status') != 'success':
-            test_results['errors'].extend(translation_test.get('errors', []))
-        
-        # Determine overall status
+          # Test 7: Test translation service configuration (if available)
+        if TRANSLATION_AVAILABLE:
+            test_results['details'].append("Testing translation service configuration...")
+            translation_test = test_translation_service_config()
+            test_results['translation_service'] = translation_test
+            
+            if translation_test.get('status') != 'success':
+                test_results['errors'].extend(translation_test.get('errors', []))
+        else:
+            test_results['details'].append("Translation service testing skipped - services not available")
+            test_results['translation_service'] = {
+                'status': 'skipped',
+                'details': ['Translation services not available in current configuration'],
+                'operations': {'availability_check': 'skipped'}
+            }
+          # Determine overall status
         if not test_results['errors']:
             test_results['overall_status'] = 'success'
             test_results['details'].append("All Azure Storage tests passed successfully!")
-            return JsonResponse(test_results, status=200)
         else:
             test_results['overall_status'] = 'failed'
             test_results['details'].append(f"Tests completed with {len(test_results['errors'])} errors")
-            return JsonResponse(test_results, status=500)
+        
+        # Return appropriate response format
+        return _format_storage_test_response(test_results, is_json_request, request)
             
     except Exception as e:
         error_msg = f"Unexpected error during storage test: {str(e)}"
@@ -670,12 +625,50 @@ def test_azure_storage(request):
         test_results['overall_status'] = 'failed'
         
         # Add stack trace for debugging
+        import traceback
         test_results['stack_trace'] = traceback.format_exc()
         
         logger.error(f"Azure Storage test failed: {error_msg}")
         logger.error(f"Stack trace: {traceback.format_exc()}")
         
-        return JsonResponse(test_results, status=500)
+        return _format_storage_test_response(test_results, is_json_request, request)
+
+def _format_storage_test_response(test_results, is_json_request, request):
+    """Helper function to format storage test response as JSON or HTML."""
+    if is_json_request:
+        status_code = 200 if test_results.get('overall_status') == 'success' else 500
+        return JsonResponse(test_results, status=status_code)
+    else:
+        # Transform test_results for template consumption
+        context = _transform_test_results_for_template(test_results)
+        return render(request, 'upload/storage_test.html', context)
+
+def _transform_test_results_for_template(test_results):
+    """Transform raw test results into template-friendly format."""
+    context = {'test_results': test_results}
+    
+    # Add some computed values for easier template rendering
+    if test_results:
+        context['test_results']['passed_tests'] = 0
+        context['test_results']['failed_tests'] = len(test_results.get('errors', []))
+        context['test_results']['warnings'] = 0
+        context['test_results']['total_duration'] = 0.0
+        
+        # Count successful tests and calculate total duration
+        for test_name, test_data in test_results.items():
+            if isinstance(test_data, dict) and test_data.get('status') == 'success':
+                context['test_results']['passed_tests'] += 1
+            if isinstance(test_data, dict) and 'duration' in test_data:
+                try:
+                    context['test_results']['total_duration'] += float(test_data['duration'])
+                except (ValueError, TypeError):
+                    pass
+        
+        # Handle warnings (skipped tests)
+        if test_results.get('translation_service', {}).get('status') == 'skipped':
+            context['test_results']['warnings'] += 1
+    
+    return context
 
 def test_container_operations(blob_service_client, container_name, container_type):
     """Test container-specific operations."""
@@ -742,11 +735,22 @@ def test_container_operations(blob_service_client, container_name, container_typ
             result['operations']['get_properties'] = 'success'
             result['details'].append(f"Container properties retrieved successfully")
             result['container_properties'] = {
-                'creation_time': properties.creation_time.isoformat() if properties.creation_time else None,
-                'last_modified': properties.last_modified.isoformat() if properties.last_modified else None,
-                'lease_status': properties.lease.status if properties.lease else None,
-                'public_access': properties.public_access
+                'creation_time': getattr(properties, 'creation_time', getattr(properties, 'created_on', None)),
+                'last_modified': getattr(properties, 'last_modified', None),
+                'lease_status': getattr(getattr(properties, 'lease', None), 'status', None),
+                'public_access': getattr(properties, 'public_access', None)
             }
+            # Convert datetime objects to strings if they exist
+            if result['container_properties']['creation_time']:
+                try:
+                    result['container_properties']['creation_time'] = result['container_properties']['creation_time'].isoformat()
+                except:
+                    result['container_properties']['creation_time'] = str(result['container_properties']['creation_time'])
+            if result['container_properties']['last_modified']:
+                try:
+                    result['container_properties']['last_modified'] = result['container_properties']['last_modified'].isoformat()
+                except:
+                    result['container_properties']['last_modified'] = str(result['container_properties']['last_modified'])
         except Exception as e:
             error_msg = f"Failed to get container properties: {str(e)}"
             result['errors'].append(error_msg)
@@ -765,6 +769,10 @@ def test_container_operations(blob_service_client, container_name, container_typ
 
 def test_blob_crud_operations(blob_service_client, container_name):
     """Test blob create, read, update, delete operations."""
+    import uuid
+    import time
+    from datetime import datetime
+    
     result = {
         'status': 'failed',
         'operations': {},
@@ -904,6 +912,12 @@ def test_translation_service_config():
         'errors': [],
         'details': []
     }
+    
+    if not TRANSLATION_AVAILABLE:
+        result['status'] = 'skipped'
+        result['details'].append("Translation services not available")
+        result['operations']['availability_check'] = 'skipped'
+        return result
     
     try:
         # Test 1: Check translation service configuration
