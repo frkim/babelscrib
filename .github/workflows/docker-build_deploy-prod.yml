@@ -32,11 +32,13 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
+        
     - name: Azure Login using OIDC
       uses: azure/login@v1
       with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}   - name: Verify Infrastructure Exists
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: Verify Infrastructure Exists
       run: |
         # Verify that the infrastructure has been deployed
         if ! az group exists --name ${{ env.RESOURCE_GROUP_NAME }}; then

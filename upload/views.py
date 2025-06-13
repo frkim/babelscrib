@@ -8,8 +8,8 @@ import logging
 from django.conf import settings
 from django.utils import timezone
 # Add translation service imports
-from lib.translation_service import create_translation_service
-from lib.config import get_config
+from services.translation_service import create_translation_service
+from services.config import get_config
 import json
 import urllib.parse
 import mimetypes

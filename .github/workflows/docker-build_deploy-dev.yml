@@ -31,7 +31,13 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4    - name: Azure Login using OIDC
+      uses: actions/checkout@v4
+
+    - name: Validate Azure Credentials
+      run: |
+        echo "${{ secrets.AZURE_CREDENTIALS }}" | jq .
+        
+    - name: Azure Login using Service Principal
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
