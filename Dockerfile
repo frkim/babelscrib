@@ -67,6 +67,9 @@ RUN mkdir -p /app/staticfiles /app/media /app/logs \
 # Copy application code
 COPY --chown=appuser:appuser . /app/
 
+# Ensure lib directory is copied (for custom modules)
+COPY --chown=appuser:appuser lib/ /app/lib/
+
 # Make entrypoint script executable
 RUN chmod +x /app/entrypoint.sh
 
