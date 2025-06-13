@@ -1,13 +1,10 @@
 {% load static %}
-<!DOCTYPE h        .logo {
-            height: 80px;
-            width: auto;
-            margin-right: 20px;
-        }<html lang="en">
+<!DOCTYPE html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document Upload</title>
+    <title data-i18n="document_upload">Document Upload</title>
     
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="{% static 'images/favicon.ico' %}">
@@ -438,39 +435,92 @@
             }
             50% {
                 opacity: 0.7;
-            }
-        }
+            }        }
         .cleanup-info {
             margin: 15px 0;
         }
         .cleanup-info small {
             line-height: 1.4;
         }
+        
+        /* Language Selector Styles */
+        .language-selector {
+            position: relative;
+            display: inline-block;
+            margin-left: 15px;
+        }
+        
+        .language-selector select {
+            appearance: none;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 5px 25px 5px 10px;
+            font-size: 14px;
+            color: #333;
+            cursor: pointer;
+            transition: all 0.2s;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 8px center;
+            background-repeat: no-repeat;
+            background-size: 12px;
+        }
+        
+        .language-selector select:hover {
+            border-color: #007cba;
+            background-color: #f0f8ff;
+        }
+        
+        .language-selector select:focus {
+            outline: none;
+            border-color: #007cba;
+            box-shadow: 0 0 0 2px rgba(0, 124, 186, 0.2);
+        }
+        
+        .language-selector label {
+            display: none; /* Hide label but keep it for accessibility */
+        }
+        
+        @media (max-width: 600px) {
+            .language-selector {
+                margin-left: 10px;
+            }
+            .language-selector select {
+                padding: 4px 20px 4px 8px;
+                font-size: 13px;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Logo Section -->
-        <div class="header">
-            <div class="logo">
-                <a href="/" class="logo-link" title="Go to Homepage">
-                    <img src="{% static 'images/logo.png' %}" alt="BabelScrib Logo">
+        <!-- Logo Section -->        <div class="header">
+            <div class="logo">                    <a href="/" class="logo-link" title="Go to Homepage" data-i18n-attr="title" data-i18n="go_to_homepage">
+                        <img src="{% static 'images/logo.png' %}" alt="BabelScrib Logo" data-i18n-attr="alt" data-i18n="babelscrib_logo">
                 </a>
-            </div>
-            <div style="margin-left: auto;">
-                <a href="/test-azure-storage/" style="color: #666; text-decoration: none; font-size: 14px; padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px; transition: all 0.2s;" 
+            </div>            <div style="margin-left: auto; display: flex; align-items: center;">
+                <!-- Language Selector -->
+                <div class="language-selector">
+                    <label for="language-select" data-i18n="language">Language:</label>
+                    <select id="language-select">
+                        <option value="en">English</option>
+                        <option value="fr">Français</option>
+                    </select>
+                </div>
+                <!-- Storage Test Link -->
+                <a href="{% url 'test_azure_storage' %}" style="color: #666; text-decoration: none; font-size: 14px; padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px; transition: all 0.2s; margin-left: 15px;" 
                    onmouseover="this.style.backgroundColor='#f0f0f0'; this.style.color='#333'"
                    onmouseout="this.style.backgroundColor='transparent'; this.style.color='#666'"
-                   title="Test Azure Storage Configuration">⚙️ Storage Test</a>
+                   title="Test Azure Storage Configuration" data-i18n-attr="title" data-i18n="test_azure_storage_configuration">⚙️ <span data-i18n="storage_test">Storage Test</span></a>
             </div>
         </div>
-        
-        <!-- Page Title -->
+          <!-- Page Title -->
         <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="font-family: 'Segoe UI Light', 'Segoe UI', Arial, sans-serif; font-weight: 300; font-size: 2em; color: #333; margin: 0;">Document Translator</h1>
+            <h1 style="font-family: 'Segoe UI Light', 'Segoe UI', Arial, sans-serif; font-weight: 300; font-size: 2em; color: #333; margin: 0;" data-i18n="document_translator">Document Translator</h1>
         </div>
         
-        <form id="upload-form" enctype="multipart/form-data" method="post" action="/upload/">
+        <form id="upload-form" enctype="multipart/form-data" method="post" action="{% url 'upload_file' %}">
+            {% csrf_token %}
             <div id="file-drop" class="file-drop">
                 <div style="display: flex; justify-content: center; gap: 18px; margin-bottom: 18px;">
                     <!-- PDF Icon -->
@@ -497,74 +547,73 @@
                     <svg width="38" height="54" viewBox="0 0 48 62" fill="none">
                         <rect width="48" height="62" rx="8" fill="#43A047"/>
                         <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">...</text>
-                    </svg>
-                </div>
-                <p>Click here to select Documents button or drag and drop your files here</p>
-                <p><small>Supported formats: pdf, doc, docx, txt, pptx, md</small></p>
-                <p><small>Document size limit: ≤ 40MB per file • Up to 1000 files per batch • Total batch size ≤ 250MB</small></p>
-                <p><small><a id="azure-ai-limits-link" href="https://learn.microsoft.com/en-us/azure/ai-services/translator/service-limits#asynchronous-batch-operation-limits" target="_blank" style="color: #007cba; text-decoration: none;">View all Azure AI Translator limits →</a></small></p>
+                    </svg>                </div>
+                <p data-i18n="click_here_to_select">Click here to select Documents button or drag and drop your files here</p>
+                <p><small data-i18n="supported_formats">Supported formats: pdf, doc, docx, txt, pptx, md</small></p>
+                <p><small data-i18n="document_size_limit">Document size limit: ≤ 40MB per file • Up to 1000 files per batch • Total batch size ≤ 250MB</small></p>
+                <p><small><a id="azure-ai-limits-link" href="https://learn.microsoft.com/en-us/azure/ai-services/translator/service-limits#asynchronous-batch-operation-limits" target="_blank" style="color: #007cba; text-decoration: none;"><span data-i18n="view_azure_limits">View all Azure AI Translator limits</span> →</a></small></p>
                 <div style="text-align: center; margin-top: 15px;">
-                    <button type="button" class="btn" id="select-file-button" style="display: inline-block;">Select Documents</button>
+                    <button type="button" class="btn" id="select-file-button" style="display: inline-block;" data-i18n="select_documents">Select Documents</button>
                 </div>
             </div>
-            <input type="file" id="file-input" name="file" accept=".pdf,.doc,.docx,.txt,.pptx,.md" multiple style="display: none;">
-            <div class="button-container">
+            <input type="file" id="file-input" name="file" accept=".pdf,.doc,.docx,.txt,.pptx,.md" multiple style="display: none;">            <div class="button-container">
                 <div class="email-container">
-                    <input type="email" id="email-input" name="email" class="email-input" placeholder="Your email" required>
+                    <input type="email" id="email-input" name="email" class="email-input" placeholder="Your email" data-i18n-attr="placeholder" data-i18n="your_email" required>
                     <div id="email-error" class="email-error"></div>
                 </div>
                 <div class="buttons-group">
-                    <button type="submit" class="btn" id="upload-button" disabled>Upload</button>
+                    <button type="submit" class="btn" id="upload-button" disabled data-i18n="upload">Upload</button>
                 </div>
             </div>
         </form>
-        <div id="upload-status"></div>
-        
-        <!-- Translation Controls -->
+        <div id="upload-status"></div>        <!-- Translation Controls -->
         <div id="translate-controls" class="translate-controls">
-            <h4>Document Translation</h4>
+            <h4 data-i18n="document_translation">Document Translation</h4>
             <div class="language-selection">
-                <label for="target-language">Translate to:</label>
+                <label for="target-language" data-i18n="translate_to">Translate to:</label>
                 <select id="target-language" name="target_language">
-                    <option value="en">English</option>
-                    <option value="es">Spanish</option>
-                    <option value="fr">French</option>
-                    <option value="de">German</option>
-                    <option value="it">Italian</option>
-                    <option value="pt">Portuguese</option>
-                    <option value="pl">Polish</option>
+                    <option value="en" data-i18n="english">English</option>
+                    <option value="es" data-i18n="spanish">Spanish</option>
+                    <option value="fr" data-i18n="french">French</option>
+                    <option value="de" data-i18n="german">German</option>
+                    <option value="it" data-i18n="italian">Italian</option>
+                    <option value="pt" data-i18n="portuguese">Portuguese</option>
+                    <option value="pl" data-i18n="polish">Polish</option>
                 </select>
             </div>
             <div class="language-selection">
-                <label for="source-language">Source language:</label>
+                <label for="source-language" data-i18n="source_language">Source language:</label>
                 <select id="source-language" name="source_language">
-                    <option value="">Auto-detect</option>
-                    <option value="en">English</option>
-                    <option value="es">Spanish</option>
-                    <option value="fr">French</option>
-                    <option value="de">German</option>
-                    <option value="it">Italian</option>
-                    <option value="pt">Portuguese</option>
-                    <option value="pl">Polish</option>
+                    <option value="" data-i18n="auto_detect">Auto-detect</option>
+                    <option value="en" data-i18n="english">English</option>
+                    <option value="es" data-i18n="spanish">Spanish</option>
+                    <option value="fr" data-i18n="french">French</option>
+                    <option value="de" data-i18n="german">German</option>
+                    <option value="it" data-i18n="italian">Italian</option>
+                    <option value="pt" data-i18n="portuguese">Portuguese</option>
+                    <option value="pl" data-i18n="polish">Polish</option>
                 </select>
             </div>
             <div class="cleanup-info">
                 <small style="color: #666; font-style: italic; display: block; margin: 10px 0; padding: 8px; background-color: #f8f9fa; border-radius: 4px; border-left: 3px solid #28a745;">
-                    📝 Note: Original uploaded files are automatically removed after translation is complete. Old translated documents (older than 24 hours) are automatically cleaned up when starting a new translation.
+                    📝 <span data-i18n="cleanup_note">Note: Original uploaded files are automatically removed after translation is complete. Old translated documents (older than 24 hours) are automatically cleaned up when starting a new translation.</span>
                 </small>
             </div>
-            <button type="button" class="btn translate-btn" id="launch-translation-btn">Launch Translation Process</button>
+            <button type="button" class="btn translate-btn" id="launch-translation-btn" data-i18n="translate_btn">Launch Translation Process</button>
             <div id="translation-status" class="translation-status"></div>
             <div id="progress-container" class="progress-container">
                 <div class="progress-bar"></div>
             </div>
         </div>
-    </div>
-
+    </div>    <script src="{% static 'js/i18n.js' %}"></script>
     <script src="{% static 'js/upload.js' %}"></script>
     <script>
-    // Prevent file dialog when clicking the Azure AI Translator limits link
+    // Initialize i18n
     document.addEventListener('DOMContentLoaded', function() {
+        // Initialize internationalization
+        BabelScribI18n.initI18n();
+        
+        // Prevent file dialog when clicking the Azure AI Translator limits link
         var link = document.getElementById('azure-ai-limits-link');
         if (link) {
             link.addEventListener('click', function(event) {
