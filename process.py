@@ -1,6 +1,6 @@
 # Import the translation service library
-from lib.translation_service import create_translation_service, translate_documents_simple
-from lib.config import get_config
+from services.translation_service import create_translation_service, translate_documents_simple
+from services.config import get_config
 import json
 
 

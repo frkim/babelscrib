@@ -1,0 +1,116 @@
+name: Deploy Infrastructure to Azure
+
+on:
+  workflow_dispatch: # Manual trigger
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+
+env:
+  RESOURCE_GROUP_NAME: babelscrib-rg
+  LOCATION: westeurope
+
+jobs:
+  infrastructure-deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login using OIDC
+      uses: azure/login@v1
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Create Resource Group
+      run: |
+        az group create \
+          --name ${{ env.RESOURCE_GROUP_NAME }} \
+          --location ${{ env.LOCATION }}
+
+    - name: Validate Bicep Template
+      run: |
+        az deployment group validate \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+          --template-file infrastructure/main.bicep \
+          --parameters containerAppName=babelscrib-${{ github.event.inputs.environment || 'dev' }} \
+          --parameters containerAppDevName=babelscrib-dev \
+          --parameters tags='{"environment":"${{ github.event.inputs.environment || 'dev' }}","project":"babelscrib","deployedBy":"github-actions"}'
+
+    - name: What-If Deployment
+      run: |
+        az deployment group what-if \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+          --template-file infrastructure/main.bicep \
+          --parameters containerAppName=babelscrib-${{ github.event.inputs.environment || 'dev' }} \
+          --parameters containerAppDevName=babelscrib-dev \
+          --parameters tags='{"environment":"${{ github.event.inputs.environment || 'dev' }}","project":"babelscrib","deployedBy":"github-actions"}'
+
+    - name: Deploy Infrastructure
+      run: |
+        echo "Deploying infrastructure from Bicep template..."
+        az deployment group create \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+          --template-file infrastructure/main.bicep \
+          --parameters containerAppName=babelscrib-${{ github.event.inputs.environment || 'dev' }} \
+          --parameters containerAppDevName=babelscrib-dev \
+          --parameters tags='{"environment":"${{ github.event.inputs.environment || 'dev' }}","project":"babelscrib","deployedBy":"github-actions"}' \
+          --name "infrastructure-deployment-${{ github.run_number }}"
+
+    - name: Wait for Deployment to Complete
+      run: |
+        az deployment group wait \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+          --name "infrastructure-deployment-${{ github.run_number }}" \
+          --created
+
+    - name: Get Deployment Outputs
+      id: outputs
+      run: |
+        OUTPUTS=$(az deployment group show \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+          --name "infrastructure-deployment-${{ github.run_number }}" \
+          --query properties.outputs \
+          --output json)
+        
+        echo "deployment-outputs=$OUTPUTS" >> $GITHUB_OUTPUT
+        
+        # Extract specific outputs for easier access
+        ACR_LOGIN_SERVER=$(echo $OUTPUTS | jq -r '.acrLoginServer.value')
+        CONTAINER_APP_NAME=$(echo $OUTPUTS | jq -r '.containerAppName.value')
+        CONTAINER_APP_DEV_NAME=$(echo $OUTPUTS | jq -r '.containerAppDevName.value')
+        
+        echo "acr-login-server=$ACR_LOGIN_SERVER" >> $GITHUB_OUTPUT
+        echo "container-app-name=$CONTAINER_APP_NAME" >> $GITHUB_OUTPUT
+        echo "container-app-dev-name=$CONTAINER_APP_DEV_NAME" >> $GITHUB_OUTPUT
+
+    - name: Infrastructure Deployment Summary
+      run: |
+        echo "## 🏗️ Infrastructure Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment**: ${{ github.event.inputs.environment || 'dev' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Resource Group**: ${{ env.RESOURCE_GROUP_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Location**: ${{ env.LOCATION }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Container Registry**: ${{ steps.outputs.outputs.acr-login-server }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Container App (Prod)**: ${{ steps.outputs.outputs.container-app-name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Container App (Dev)**: ${{ steps.outputs.outputs.container-app-dev-name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Deployment Time**: $(date)" >> $GITHUB_STEP_SUMMARY
+
+    outputs:
+      acr-login-server: ${{ steps.outputs.outputs.acr-login-server }}
+      container-app-name: ${{ steps.outputs.outputs.container-app-name }}
+      container-app-dev-name: ${{ steps.outputs.outputs.container-app-dev-name }}
+      resource-group-name: ${{ env.RESOURCE_GROUP_NAME }}

@@ -67,6 +67,9 @@ RUN mkdir -p /app/staticfiles /app/media /app/logs \
 # Copy application code with proper ownership
 COPY --chown=appuser:appuser . /app/
 
+# Ensure services directory is copied (for custom modules)
+COPY --chown=appuser:appuser services/ /app/services/
+
 # Make scripts executable
 RUN chmod +x /app/entrypoint.prod.sh
 
