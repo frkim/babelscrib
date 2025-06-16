@@ -635,7 +635,40 @@
                         <img src="{% static 'images/logo.png' %}" alt="BabelScrib Logo" data-i18n-attr="alt" data-i18n="babelscrib_logo">
                 </a>
             </div>            <div style="margin-left: auto; display: flex; align-items: center; gap: 25px;">
-                <!-- Language Selector -->                <div class="language-selector" style="flex-shrink: 0;">
+                <!-- User Authentication Status -->
+                {% if user.is_authenticated %}
+                    <div style="display: flex; align-items: center; gap: 15px; color: #666; font-size: 14px;">
+                        <span style="display: flex; align-items: center; gap: 5px;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                            </svg>
+                            <span>{{ user.username|default:user.email }}</span>
+                        </span>
+                        <a href="{% url 'account_logout' %}" 
+                           style="color: #dc3545; text-decoration: none; font-size: 14px; padding: 5px 10px; border: 1px solid #dc3545; border-radius: 4px; transition: all 0.2s; flex-shrink: 0; white-space: nowrap; display: flex; align-items: center; gap: 5px;" 
+                           onmouseover="this.style.backgroundColor='#dc3545'; this.style.color='white'"
+                           onmouseout="this.style.backgroundColor='transparent'; this.style.color='#dc3545'"
+                           title="Sign out of your account" data-i18n-attr="title" data-i18n="sign_out_account">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.59L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+                            </svg>
+                            <span data-i18n="disconnect">Disconnect</span>
+                        </a>
+                    </div>
+                {% else %}
+                    <a href="{% url 'account_login' %}" 
+                       style="color: #007cba; text-decoration: none; font-size: 14px; padding: 5px 10px; border: 1px solid #007cba; border-radius: 4px; transition: all 0.2s; flex-shrink: 0; white-space: nowrap; display: flex; align-items: center; gap: 5px;" 
+                       onmouseover="this.style.backgroundColor='#007cba'; this.style.color='white'"
+                       onmouseout="this.style.backgroundColor='transparent'; this.style.color='#007cba'"
+                       title="Sign in to your account" data-i18n-attr="title" data-i18n="sign_in_account">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M11 7L9.6 8.4l2.6 2.6H2v2h10.2l-2.6 2.6L11 17l5-5-5-5zm9 12h-8v2h8c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-8v2h8v14z"/>
+                        </svg>
+                        <span data-i18n="sign_in">Sign In</span>
+                    </a>
+                {% endif %}
+                
+                <!-- Language Selector --><div class="language-selector" style="flex-shrink: 0;">
                     <label for="language-select" data-i18n="language">Language:</label>                    <select id="language-select">
                         <option value="en" data-flag="gb">English</option>
                         <option value="fr" data-flag="fr">Français</option>
