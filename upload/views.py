@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse, Http404
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
 from azure.storage.blob import BlobServiceClient
 from azure.core.exceptions import ResourceExistsError, AzureError, ResourceNotFoundError
 import os
@@ -137,10 +138,10 @@ def readiness_check(request):
         return JsonResponse({
             'status': 'not_ready',
             'timestamp': timezone.now().isoformat(),
-            'error': str(e)
-        }, status=503)
+            'error': str(e)        }, status=503)
 
 @csrf_exempt
+@login_required
 def upload_file(request):
     if request.method == 'POST':
         # Handle both single file and multiple files
@@ -235,8 +236,12 @@ def upload_file(request):
 
     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
+@login_required
 def index(request):
-    return render(request, 'upload/index.html')
+    context = {
+        'user_email': request.user.email,
+    }
+    return render(request, 'upload/index.html', context)
 
 @csrf_exempt
 @require_user_session
@@ -963,3 +968,10 @@ def test_translation_service_config():
         result['errors'].append(error_msg)
         result['details'].append(error_msg)
         return result
+
+def test_microsoft(request):
+    """Test view for Microsoft authentication"""
+    from django.utils import timezone
+    return render(request, 'basic_test.html', {
+        'current_time': timezone.now()
+    })

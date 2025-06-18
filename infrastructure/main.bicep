@@ -193,12 +193,16 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           server: '${acr.name}.azurecr.io'
         }
       ]
-      secrets: []
+      secrets: [
+        {
+          name: 'microsoft-client-secret'
+          value: 'your-microsoft-client-secret-here'  // Replace with actual secret or parameter
+        }
+      ]
       activeRevisionsMode: 'Single'
     }
     template: {
-      containers: [
-        {
+      containers: [        {
           name: containerAppName
           image: '${acr.name}.azurecr.io/${containerAppName}:prod'
           resources: {
@@ -209,6 +213,14 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'DJANGO_SETTINGS_MODULE'
               value: 'api.settings'
+            }
+            {
+              name: 'MICROSOFT_CLIENT_ID'
+              value: 'fcfbaf73-654e-49a7-9141-b994192888c6'
+            }
+            {
+              name: 'MICROSOFT_CLIENT_SECRET'
+              secretRef: 'microsoft-client-secret'
             }
           ]
           probes: [
@@ -238,8 +250,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
         maxReplicas: prodMaxReplicas
       }
     }
-    ingress: {
-      external: true
+    ingress: {      external: true
       targetPort: 8000
       transport: 'auto'
       allowInsecure: false
