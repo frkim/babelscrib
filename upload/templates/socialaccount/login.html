@@ -102,6 +102,7 @@
             font-size: 1.1em;
             line-height: 1.5;
             margin-bottom: 30px;
+            text-align: justify;
         }
         
         .auth-form {
@@ -125,6 +126,7 @@
             box-shadow: 0 6px 20px rgba(0, 120, 212, 0.3);
             position: relative;
             overflow: hidden;
+            cursor: pointer;
         }
         
         .microsoft-auth-btn::before {
@@ -264,7 +266,6 @@
     <div class="microsoft-login-container">
         <div class="logo-section">
             <img src="{% static 'images/logo.png' %}" alt="BabelScrib Logo">
-            <h1 class="app-title">BabelScrib</h1>
         </div>
         
         <div class="microsoft-header">
@@ -274,59 +275,23 @@
                 </svg>
                 Sign in with Microsoft
             </h2>
-            <p class="microsoft-description">
+            <p class="microsoft-description"></p>
                 Use your Microsoft account to access BabelScrib's powerful document translation services. 
                 Your documents are processed securely and remain private to your account.
             </p>
         </div>
-          <div class="auth-form">
-            {% if providers %}
-                {% for provider in providers %}
-                    {% if provider.id == "microsoft" %}
-                        <form method="post" action="/accounts/microsoft/login/">
-                            {% csrf_token %}
-                            {% if process == "connect" %}
-                                {% if render_authentication_form %}
-                                    {% include "socialaccount/authentication_form.html" %}
-                                {% endif %}
-                            {% endif %}
-                            {% if redirect_field_value %}
-                                <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}" />
-                            {% endif %}
-                            <button type="submit" class="microsoft-auth-btn" onclick="showLoading()">
-                                <svg class="microsoft-icon" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/>
-                                </svg>
-                                <span class="btn-text">Continue with Microsoft</span>
-                            </button>
-                        </form>
-                    {% endif %}
-                {% endfor %}
-            {% else %}
-                <!-- Fallback button when providers context is not available -->
-                <form method="post" action="/accounts/microsoft/login/">
-                    {% csrf_token %}
-                    {% if redirect_field_value %}
-                        <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}" />
-                    {% endif %}
-                    <button type="submit" class="microsoft-auth-btn" onclick="showLoading()">
-                        <svg class="microsoft-icon" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/>
-                        </svg>
-                        <span class="btn-text">Continue with Microsoft</span>
-                    </button>
-                </form>
-            {% endif %}
-            
-            <!-- Always show a direct link as additional fallback -->
-            <div style="margin-top: 20px;">
-                <a href="/accounts/microsoft/login/" class="microsoft-auth-btn" onclick="showLoading()" style="text-decoration: none; display: flex;">
+        
+        <div class="auth-form">
+            <!-- Working form without problematic onclick -->
+            <form method="post" action="/accounts/microsoft/login/">
+                {% csrf_token %}
+                <button type="submit" class="microsoft-auth-btn" id="microsoftLoginBtn">
                     <svg class="microsoft-icon" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/>
                     </svg>
-                    <span class="btn-text">Sign in with Microsoft Account</span>
-                </a>
-            </div>
+                    <span class="btn-text">Continue with Microsoft Entra ID</span>
+                </button>
+            </form>
         </div>
         
         <div class="security-note">
@@ -347,14 +312,35 @@
     </div>
     
     <script>
-        function showLoading() {
-            document.getElementById('loadingOverlay').style.display = 'flex';
-        }
+        console.log('Beautiful Microsoft login page loaded');
+        
+        // Add form submission handler that shows loading AFTER form starts submitting
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.querySelector('form');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            
+            if (form && loadingOverlay) {
+                form.addEventListener('submit', function(e) {
+                    console.log('Form is being submitted to Microsoft');
+                    
+                    // Show loading overlay AFTER form submission starts
+                    setTimeout(function() {
+                        loadingOverlay.style.display = 'flex';
+                    }, 100);
+                    
+                    // Allow form to submit normally
+                    return true;
+                });
+            }
+        });
         
         // Hide loading overlay if user comes back to the page
         window.addEventListener('pageshow', function(event) {
             if (event.persisted) {
-                document.getElementById('loadingOverlay').style.display = 'none';
+                const overlay = document.getElementById('loadingOverlay');
+                if (overlay) {
+                    overlay.style.display = 'none';
+                }
             }
         });
     </script>

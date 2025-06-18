@@ -124,26 +124,6 @@
             font-weight: 400;
         }
         
-        .microsoft-info {
-            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-            border: 1px solid #e2e8f0;
-            border-radius: 16px;
-            padding: 20px;
-            margin-bottom: 25px;
-            color: #475569;
-            font-size: 0.95rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            font-weight: 500;
-        }
-        
-        .microsoft-info .microsoft-icon {
-            font-size: 1.2rem;
-            color: #0078d4;
-        }
-        
         .signup-form {
             text-align: left;
         }
@@ -188,18 +168,26 @@
             color: #667eea;
         }
         
-        .error-message {
+        .errorlist {
             margin-top: 6px;
             padding: 8px 12px;
             background: #fef2f2;
             border: 1px solid #fecaca;
             border-radius: 8px;
             font-size: 0.875rem;
+            list-style: none;
         }
         
-        .error-message small {
+        .errorlist li {
             color: #dc2626;
             font-weight: 500;
+        }
+        
+        .errorlist li::before {
+            content: "\f071";
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            margin-right: 8px;
         }
         
         .submit-btn {
@@ -245,6 +233,42 @@
         
         .submit-btn:active {
             transform: translateY(0);
+        }
+        
+        .social-login {
+            margin-top: 30px;
+            padding-top: 25px;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .social-login p {
+            color: #64748b;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        
+        .microsoft-btn {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 16px 24px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            width: 100%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+        
+        .microsoft-btn:hover {
+            background: #106ebe;
+            transform: translateY(-1px);
+            box-shadow: 0 8px 20px rgba(0, 120, 212, 0.3);
         }
         
         /* Add some decorative elements */
@@ -318,31 +342,32 @@
         </div>
         
         <div class="signup-header">
-            <h2>Complete Your Registration</h2>
+            <h2>Create Your Account</h2>
             <p class="signup-description">
-                You're almost ready! Please complete your profile to start using BabelScrib's powerful translation tools.
+                Join BabelScrib and start translating documents with our powerful AI-powered tools.
             </p>
         </div>
         
-        {% if sociallogin %}
-            <div class="microsoft-info">
-                <i class="fab fa-microsoft microsoft-icon"></i>
-                <span><strong>Connected with Microsoft:</strong> {{ sociallogin.account.extra_data.name|default:sociallogin.account.extra_data.email }}</span>
-            </div>
-        {% endif %}
-        
         <form method="post" class="signup-form">
             {% csrf_token %}
+            {% if form.non_field_errors %}
+                <div class="errorlist">
+                    {% for error in form.non_field_errors %}
+                        <li>{{ error }}</li>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            
             {% for field in form %}
                 <div class="form-group">
                     <label for="{{ field.id_for_label }}">{{ field.label }}</label>
                     {{ field }}
                     {% if field.errors %}
-                        <div class="error-message">
+                        <ul class="errorlist">
                             {% for error in field.errors %}
-                                <small><i class="fas fa-exclamation-circle"></i> {{ error }}</small>
+                                <li>{{ error }}</li>
                             {% endfor %}
-                        </div>
+                        </ul>
                     {% endif %}
                 </div>
             {% endfor %}
@@ -353,9 +378,17 @@
             
             <button type="submit" class="submit-btn">
                 <i class="fas fa-user-plus" style="margin-right: 8px;"></i>
-                Complete Registration
+                Create Account
             </button>
         </form>
+        
+        <div class="social-login">
+            <p>Or continue with</p>
+            <a href="{% url 'microsoft_login' %}" class="microsoft-btn">
+                <i class="fab fa-microsoft"></i>
+                Sign up with Microsoft
+            </a>
+        </div>
     </div>
 </body>
 </html>

@@ -137,6 +137,7 @@ AUTHENTICATION_BACKENDS = [
 # SOCIALACCOUNT_PROVIDERS configuration removed to avoid conflicts with SocialApp
 
 # Allauth settings
+LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
 ACCOUNT_LOGOUT_ON_GET = True

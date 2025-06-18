@@ -723,9 +723,8 @@
                     <button type="button" class="btn" id="select-file-button" style="display: inline-block;" data-i18n="select_documents">Select Documents</button>
                 </div>
             </div>
-            <input type="file" id="file-input" name="file" accept=".pdf,.doc,.docx,.txt,.pptx,.md" multiple style="display: none;">            <div class="button-container">
-                <div class="email-container">
-                    <input type="email" id="email-input" name="email" class="email-input" placeholder="Your email" data-i18n-attr="placeholder" data-i18n="your_email" required>
+            <input type="file" id="file-input" name="file" accept=".pdf,.doc,.docx,.txt,.pptx,.md" multiple style="display: none;">            <div class="button-container">                <div class="email-container">
+                    <input type="email" id="email-input" name="email" class="email-input" placeholder="Your email" data-i18n-attr="placeholder" data-i18n="your_email" value="{{ user.email|default:'' }}" required>
                     <div id="email-error" class="email-error"></div>
                 </div>
                 <div class="buttons-group">
@@ -775,6 +774,26 @@
     document.addEventListener('DOMContentLoaded', function() {
         // Initialize internationalization
         BabelScribI18n.initI18n();
+          // If email is pre-filled from authentication, trigger validation and save to cookie
+        const emailInput = document.getElementById('email-input');
+        if (emailInput && emailInput.value.trim()) {
+            // Small delay to ensure upload.js has initialized
+            setTimeout(function() {
+                // Save the authenticated user's email to cookie for future use
+                const userEmail = emailInput.value.trim();
+                if (typeof setCookie === 'function' && userEmail) {
+                    setCookie('userEmail', userEmail, 30);
+                }
+                
+                // Trigger validation to enable upload button
+                if (typeof validateEmailAndUpdateButton === 'function') {
+                    validateEmailAndUpdateButton();
+                } else {
+                    // Fallback: trigger input event to activate validation
+                    emailInput.dispatchEvent(new Event('input'));
+                }
+            }, 100);
+        }
         
         // Prevent file dialog when clicking the Azure AI Translator limits link
         var link = document.getElementById('azure-ai-limits-link');

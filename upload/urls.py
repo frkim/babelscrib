@@ -12,4 +12,6 @@ urlpatterns = [
     path('ready/', views.readiness_check, name='readiness_check'),
     # Storage test endpoint
     path('test-azure-storage/', views.test_azure_storage, name='test_azure_storage'),
+    # Test Microsoft authentication
+    path('test-microsoft/', views.test_microsoft, name='test_microsoft'),
 ]
