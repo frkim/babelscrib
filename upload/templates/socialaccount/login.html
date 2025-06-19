@@ -1,0 +1,348 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microsoft Sign In - BabelScrib</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="{% static 'images/favicon.ico' %}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'images/favicon-32x32.png' %}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'images/favicon-16x16.png' %}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'images/apple-touch-icon.png' %}">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0078d4 0%, #106ebe 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .microsoft-login-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+            padding: 60px 40px;
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .microsoft-login-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #0078d4, #106ebe, #0078d4);
+            background-size: 200% 100%;
+            animation: shimmer 2s linear infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        
+        .logo-section {
+            margin-bottom: 40px;
+        }
+        
+        .logo-section img {
+            height: 80px;
+            width: auto;
+            margin-bottom: 20px;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+        }
+        
+        .app-title {
+            font-size: 2.2em;
+            color: #333;
+            font-weight: 300;
+            margin-bottom: 10px;
+            letter-spacing: -0.5px;
+        }
+        
+        .microsoft-header {
+            margin-bottom: 40px;
+        }
+        
+        .microsoft-header h2 {
+            color: #0078d4;
+            font-size: 1.8em;
+            font-weight: 400;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .microsoft-icon-header {
+            width: 28px;
+            height: 28px;
+            margin-right: 10px;
+        }
+        
+        .microsoft-description {
+            color: #666;
+            font-size: 1.1em;
+            line-height: 1.5;
+            margin-bottom: 30px;
+            text-align: justify;
+        }
+        
+        .auth-form {
+            margin-bottom: 30px;
+        }
+        
+        .microsoft-auth-btn {
+            background: linear-gradient(135deg, #0078d4 0%, #106ebe 100%);
+            color: white;
+            border: none;
+            padding: 18px 40px;
+            border-radius: 12px;
+            font-size: 1.2em;
+            font-weight: 500;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 6px 20px rgba(0, 120, 212, 0.3);
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+        }
+        
+        .microsoft-auth-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s ease;
+        }
+        
+        .microsoft-auth-btn:hover::before {
+            left: 100%;
+        }
+        
+        .microsoft-auth-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0, 120, 212, 0.4);
+            color: white;
+            text-decoration: none;
+        }
+        
+        .microsoft-auth-btn:active {
+            transform: translateY(-1px);
+        }
+        
+        .microsoft-icon {
+            width: 24px;
+            height: 24px;
+            margin-right: 12px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .btn-text {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .security-note {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 30px;
+            color: #6c757d;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+        
+        .security-note .security-icon {
+            color: #28a745;
+            margin-right: 8px;
+        }
+        
+        .back-link {
+            margin-top: 30px;
+        }
+        
+        .back-link a {
+            color: #0078d4;
+            text-decoration: none;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+        
+        .back-link a:hover {
+            color: #106ebe;
+            text-decoration: underline;
+        }
+        
+        .back-link svg {
+            margin-right: 5px;
+            transition: transform 0.3s ease;
+        }
+        
+        .back-link a:hover svg {
+            transform: translateX(-3px);
+        }
+        
+        @media (max-width: 768px) {
+            .microsoft-login-container {
+                padding: 40px 30px;
+                margin: 20px;
+            }
+            
+            .app-title {
+                font-size: 1.8em;
+            }
+            
+            .microsoft-header h2 {
+                font-size: 1.5em;
+            }
+        }
+        
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 120, 212, 0.9);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top: 3px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-overlay" id="loadingOverlay">
+        <div style="text-align: center;">
+            <div class="loading-spinner"></div>
+            <p style="margin-top: 20px; font-size: 1.1em;">Connecting to Microsoft...</p>
+        </div>
+    </div>
+    
+    <div class="microsoft-login-container">
+        <div class="logo-section">
+            <img src="{% static 'images/logo.png' %}" alt="BabelScrib Logo">
+        </div>
+        
+        <div class="microsoft-header">
+            <h2>
+                <svg class="microsoft-icon-header" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/>
+                </svg>
+                Sign in with Microsoft
+            </h2>
+            <p class="microsoft-description"></p>
+                Use your Microsoft account to access BabelScrib's powerful document translation services. 
+                Your documents are processed securely and remain private to your account.
+            </p>
+        </div>
+        
+        <div class="auth-form">
+            <!-- Working form without problematic onclick -->
+            <form method="post" action="/accounts/microsoft/login/">
+                {% csrf_token %}
+                <button type="submit" class="microsoft-auth-btn" id="microsoftLoginBtn">
+                    <svg class="microsoft-icon" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/>
+                    </svg>
+                    <span class="btn-text">Continue with Microsoft Entra ID</span>
+                </button>
+            </form>
+        </div>
+        
+        <div class="security-note">
+            <span class="security-icon">🔒</span>
+            <strong>Secure Authentication:</strong> We use Microsoft's secure OAuth 2.0 protocol. 
+            BabelScrib never sees your Microsoft password and only accesses basic profile information 
+            to create your account.
+        </div>
+        
+        <div class="back-link">
+            <a href="{% url 'upload_page' %}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                </svg>
+                Back to Home
+            </a>
+        </div>
+    </div>
+    
+    <script>
+        console.log('Beautiful Microsoft login page loaded');
+        
+        // Add form submission handler that shows loading AFTER form starts submitting
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.querySelector('form');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            
+            if (form && loadingOverlay) {
+                form.addEventListener('submit', function(e) {
+                    console.log('Form is being submitted to Microsoft');
+                    
+                    // Show loading overlay AFTER form submission starts
+                    setTimeout(function() {
+                        loadingOverlay.style.display = 'flex';
+                    }, 100);
+                    
+                    // Allow form to submit normally
+                    return true;
+                });
+            }
+        });
+        
+        // Hide loading overlay if user comes back to the page
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted) {
+                const overlay = document.getElementById('loadingOverlay');
+                if (overlay) {
+                    overlay.style.display = 'none';
+                }
+            }
+        });
+    </script>
+</body>
+</html>
