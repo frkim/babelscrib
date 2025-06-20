@@ -21,6 +21,19 @@ DEBUG = env.bool('DEBUG', default=True)
 
 ALLOWED_HOSTS = ['*']
 
+# Add CSRF trusted origins for production
+CSRF_TRUSTED_ORIGINS = [
+    'https://www.babelscrib.com',
+    'https://dev.babelscrib.com',
+    'https://babelscrib.com',
+    'https://*.babelscrib.com',  # For any subdomain
+]
+
+# If you have additional domains, add them from environment variables
+if env('CSRF_TRUSTED_ORIGINS', default=''):
+    additional_origins = env.list('CSRF_TRUSTED_ORIGINS')
+    CSRF_TRUSTED_ORIGINS.extend(additional_origins)
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -210,6 +223,30 @@ if DEBUG and env.bool('DJANGO_LOG_ENV_VARS', default=False):
         logger.info(f"ENV: {key}={display_value}")
     
     logger.info("=== END STARTUP ENVIRONMENT VARIABLES ===")
+
+# Production Security Settings
+if not DEBUG:
+    # Restrict ALLOWED_HOSTS in production
+    ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['dev.babelscrib.com', 'babelscrib.com'])
+    
+    # Security headers
+    SECURE_SSL_REDIRECT = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+    
+    # Session security
+    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    
+    # CSRF security
+    CSRF_COOKIE_SECURE = True
+    CSRF_COOKIE_HTTPONLY = True
+    CSRF_COOKIE_SAMESITE = 'Lax'
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
