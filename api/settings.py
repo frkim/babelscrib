@@ -18,7 +18,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = env('SECRET_KEY', default='your-secret-key')
 
 # More production-safe: default to False in production-like environments
-DEBUG = env.bool('DEBUG', default=False)
+DEBUG = env.bool('DEBUG', default=True)
 
 # Critical: Set this early to ensure proper HTTPS detection in production
 if not DEBUG:

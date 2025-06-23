@@ -106,6 +106,10 @@
             font-size: 0.9em;
             color: #6c757d;
         }
+        .error-border {
+            border-color: #dc3545 !important;
+            background-color: #f8d7da !important;
+        }
         .back-button {
             display: inline-block;
             background: #007bff;
@@ -369,6 +373,92 @@
                 </div>
             {% endif %}
 
+            <!-- Environment Variables Test -->
+            {% if test_results.env_vars_test %}
+                <div class="test-section {% if test_results.env_vars_test.status == 'success' %}success{% elif test_results.env_vars_test.errors %}error{% else %}warning{% endif %}">
+                    <div class="test-title">
+                        <span class="status-icon {% if test_results.env_vars_test.status == 'success' %}success{% elif test_results.env_vars_test.errors %}error{% else %}warning{% endif %}">
+                            {% if test_results.env_vars_test.status == 'success' %}✅{% elif test_results.env_vars_test.errors %}❌{% else %}⚠️{% endif %}
+                        </span>
+                        Environment Variables Configuration
+                    </div>
+                    
+                    {% if test_results.env_vars_test.summary %}
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin: 15px 0;">
+                            <strong>Configuration Summary:</strong>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <div class="info-label">Critical Variables</div>
+                                    <div class="info-value">{{ test_results.env_vars_test.summary.total_critical_vars }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Missing Variables</div>
+                                    <div class="info-value">{{ test_results.env_vars_test.summary.missing_critical_vars }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Additional Variables</div>
+                                    <div class="info-value">{{ test_results.env_vars_test.summary.additional_vars_count }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Completion</div>
+                                    <div class="info-value">{{ test_results.env_vars_test.summary.completion_percentage }}%</div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    {% if test_results.env_vars_test.env_vars %}
+                        <div style="margin-top: 15px;">
+                            <strong>Environment Variables by Category:</strong>
+                            {% for category, vars in test_results.env_vars_test.env_vars.items %}
+                                <div style="margin: 15px 0; padding: 15px; background: #ffffff; border: 1px solid #dee2e6; border-radius: 4px;">
+                                    <h4 style="margin: 0 0 10px 0; color: #495057;">{{ category }}</h4>
+                                    <div class="info-grid">
+                                        {% for var_name, var_info in vars.items %}
+                                            <div class="info-item {% if not var_info.is_set %}error-border{% endif %}">
+                                                <div class="info-label">
+                                                    {{ var_name }}
+                                                    {% if not var_info.is_set %}<span style="color: #dc3545;"> ❌</span>{% else %}<span style="color: #28a745;"> ✅</span>{% endif %}
+                                                </div>
+                                                <div class="info-value" style="margin-bottom: 5px;">
+                                                    <strong>Value:</strong> {{ var_info.display_value }}
+                                                </div>
+                                                <div style="font-size: 0.8em; color: #666;">
+                                                    {{ var_info.description }}
+                                                    {% if var_info.is_set and var_info.length > 0 %}
+                                                        <br><em>Length: {{ var_info.length }} characters</em>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    <div class="test-details">
+                        <strong>Test Details:</strong>
+                        <ul>
+                            {% for detail in test_results.env_vars_test.details %}
+                                <li>{{ detail }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    {% if test_results.env_vars_test.errors %}
+                        <div class="error-list">
+                            <strong>Errors Found:</strong>
+                            <ul>
+                                {% for error in test_results.env_vars_test.errors %}
+                                    <li style="color: #dc3545;">{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+
             <!-- Overall Errors -->
             {% if test_results.errors %}
                 <div class="test-section error">
@@ -397,6 +487,9 @@
                     <li>Verify that your Microsoft app registration redirect URIs match the callback URLs shown above</li>
                     <li>Use HTTPS in production environments for security</li>
                     <li>Keep your client secret secure and never expose it in client-side code</li>
+                    <li>Ensure all critical environment variables are properly configured</li>
+                    <li>Use environment-specific configuration files (.env) for local development</li>
+                    <li>Verify that sensitive environment variables are properly masked in logs</li>
                     <li>Test OAuth login flow after fixing any configuration issues</li>
                 </ul>
             </div>

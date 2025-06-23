@@ -1100,6 +1100,13 @@ def test_authentication_config(request):
         if test_results['oauth_urls_test'].get('status') != 'success':
             test_results['errors'].extend(test_results['oauth_urls_test'].get('errors', []))
         
+        # Test 4: Environment Variables
+        test_results['details'].append("Testing environment variables configuration...")
+        test_results['env_vars_test'] = test_environment_variables()
+        
+        if test_results['env_vars_test'].get('status') != 'success':
+            test_results['errors'].extend(test_results['env_vars_test'].get('errors', []))
+        
         # Determine overall status
         if not test_results['errors']:
             test_results['overall_status'] = 'success'
@@ -1503,3 +1510,184 @@ def _transform_auth_test_results_for_template(test_results):
                         context['test_results']['warnings'] += 1
     
     return context
+
+def test_environment_variables():
+    """Test environment variables configuration for the application."""
+    result = {
+        'status': 'failed',
+        'operations': {},
+        'errors': [],
+        'details': [],
+        'env_vars': {}
+    }
+    
+    try:
+        # Define critical environment variables for different categories
+        critical_vars = {
+            'Azure Storage': {
+                'AZURE_STORAGE_CONNECTION_STRING': {'sensitive': True, 'description': 'Azure Storage connection string'},
+                'AZURE_STORAGE_CONTAINER_NAME_SOURCE': {'sensitive': False, 'description': 'Source container name'},
+                'AZURE_STORAGE_CONTAINER_NAME_TARGET': {'sensitive': False, 'description': 'Target container name'},
+            },
+            'Azure Translation': {
+                'AZURE_TRANSLATION_KEY': {'sensitive': True, 'description': 'Azure Translation service key'},
+                'AZURE_TRANSLATION_ENDPOINT': {'sensitive': False, 'description': 'Azure Translation endpoint'},
+                'AZURE_TRANSLATION_SOURCE_URI': {'sensitive': False, 'description': 'Translation source URI'},
+                'AZURE_TRANSLATION_TARGET_URI': {'sensitive': False, 'description': 'Translation target URI'},
+            },
+            'Microsoft Authentication': {
+                'MICROSOFT_CLIENT_ID': {'sensitive': False, 'description': 'Microsoft OAuth client ID'},
+                'MICROSOFT_CLIENT_SECRET': {'sensitive': True, 'description': 'Microsoft OAuth client secret'},
+                'MICROSOFT_TENANT_ID': {'sensitive': False, 'description': 'Microsoft tenant ID'},
+            },
+            'Django Settings': {
+                'DJANGO_SECRET_KEY': {'sensitive': True, 'description': 'Django secret key'},
+                'DJANGO_DEBUG': {'sensitive': False, 'description': 'Django debug mode'},
+                'DJANGO_ALLOWED_HOSTS': {'sensitive': False, 'description': 'Django allowed hosts'},
+                'DATABASE_URL': {'sensitive': True, 'description': 'Database connection URL'},
+            }
+        }
+        
+        # Test each category of environment variables
+        all_vars_status = 'success'
+        missing_critical = []
+        
+        for category, vars_dict in critical_vars.items():
+            result['details'].append(f"Checking {category} environment variables...")
+            category_vars = {}
+            
+            for var_name, var_info in vars_dict.items():
+                value = os.getenv(var_name)
+                var_result = {
+                    'description': var_info['description'],
+                    'sensitive': var_info['sensitive'],
+                    'is_set': value is not None,
+                    'length': len(value) if value else 0
+                }
+                
+                if value:
+                    # Mask sensitive values
+                    if var_info['sensitive']:
+                        if len(value) > 20:
+                            var_result['display_value'] = f"{value[:10]}...{value[-4:]} (length: {len(value)})"
+                        else:
+                            var_result['display_value'] = '*' * min(len(value), 10)
+                    else:
+                        var_result['display_value'] = value
+                    
+                    result['details'].append(f"✅ {var_name} is configured")
+                else:
+                    var_result['display_value'] = '<not set>'
+                    missing_critical.append(f"{category}: {var_name}")
+                    result['details'].append(f"❌ {var_name} is missing")
+                
+                category_vars[var_name] = var_result
+            
+            result['env_vars'][category] = category_vars
+        
+        # Check for additional environment variables that might be set
+        result['details'].append("Scanning for additional environment variables...")
+        additional_vars = {}
+        env_prefixes = ['AZURE_', 'DJANGO_', 'MICROSOFT_', 'DATABASE_', 'REDIS_', 'CELERY_']
+        
+        for key, value in os.environ.items():
+            if any(key.startswith(prefix) for prefix in env_prefixes):
+                # Skip if already covered in critical vars
+                already_covered = False
+                for category_vars in critical_vars.values():
+                    if key in category_vars:
+                        already_covered = True
+                        break
+                
+                if not already_covered:
+                    # Determine if this looks sensitive
+                    is_sensitive = any(sensitive_term in key.lower() 
+                                     for sensitive_term in ['key', 'secret', 'password', 'token', 'connection_string'])
+                    
+                    var_result = {
+                        'description': 'Additional environment variable',
+                        'sensitive': is_sensitive,
+                        'is_set': True,
+                        'length': len(value)
+                    }
+                    
+                    if is_sensitive:
+                        if len(value) > 20:
+                            var_result['display_value'] = f"{value[:10]}...{value[-4:]} (length: {len(value)})"
+                        else:
+                            var_result['display_value'] = '*' * min(len(value), 10)
+                    else:
+                        var_result['display_value'] = value
+                    
+                    additional_vars[key] = var_result
+        
+        if additional_vars:
+            result['env_vars']['Additional Variables'] = additional_vars
+            result['details'].append(f"Found {len(additional_vars)} additional environment variables")
+        
+        # Test environment loading mechanism
+        result['details'].append("Testing environment loading mechanism...")
+        try:
+            from django.conf import settings
+            debug_mode = getattr(settings, 'DEBUG', None)
+            secret_key = getattr(settings, 'SECRET_KEY', None)
+            
+            if secret_key:
+                result['details'].append("✅ Django settings loaded successfully")
+                result['operations']['django_settings'] = 'success'
+            else:
+                result['errors'].append("Django SECRET_KEY not properly loaded")
+                result['operations']['django_settings'] = 'failed'
+                all_vars_status = 'failed'
+                
+        except Exception as e:
+            result['errors'].append(f"Failed to load Django settings: {str(e)}")
+            result['operations']['django_settings'] = 'failed'
+            all_vars_status = 'failed'
+        
+        # Check for common environment variable issues
+        result['details'].append("Checking for common environment variable issues...")
+        
+        # Check for URL encoding issues
+        connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        if connection_string and '%' in connection_string:
+            result['errors'].append("AZURE_STORAGE_CONNECTION_STRING appears to be URL-encoded")
+            all_vars_status = 'warning'
+        
+        # Generate summary
+        total_critical_vars = sum(len(vars_dict) for vars_dict in critical_vars.values())
+        total_missing = len(missing_critical)
+        
+        if missing_critical:
+            if total_missing > total_critical_vars * 0.5:  # More than 50% missing
+                result['errors'].append(f"Many critical environment variables are missing: {missing_critical}")
+                all_vars_status = 'failed'
+            else:
+                result['errors'].append(f"Some environment variables are missing: {missing_critical}")
+                if all_vars_status == 'success':
+                    all_vars_status = 'warning'
+        
+        result['summary'] = {
+            'total_critical_vars': total_critical_vars,
+            'missing_critical_vars': total_missing,
+            'additional_vars_count': len(additional_vars) if additional_vars else 0,
+            'completion_percentage': int(((total_critical_vars - total_missing) / total_critical_vars) * 100) if total_critical_vars > 0 else 0
+        }
+        
+        # Set final status
+        if all_vars_status == 'success' and not missing_critical:
+            result['status'] = 'success'
+            result['details'].append("All critical environment variables are properly configured")
+        else:
+            result['status'] = all_vars_status
+        
+        result['operations']['env_vars_check'] = result['status']
+        
+        return result
+        
+    except Exception as e:
+        error_msg = f"Unexpected error in environment variables test: {str(e)}"
+        result['errors'].append(error_msg)
+        result['details'].append(error_msg)
+        result['operations']['env_vars_check'] = 'failed'
+        return result
