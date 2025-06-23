@@ -153,6 +153,17 @@ AZURE_TRANSLATION_TARGET_URI = env('AZURE_TRANSLATION_TARGET_URI', default='')
 # Microsoft Authentication settings
 SITE_ID = 1
 
+# Microsoft OAuth settings from environment variables
+MICROSOFT_CLIENT_ID = env('MICROSOFT_CLIENT_ID', default='')
+MICROSOFT_CLIENT_SECRET = env('MICROSOFT_CLIENT_SECRET', default='')
+
+# Validate Microsoft configuration in production
+if not DEBUG:
+    if not MICROSOFT_CLIENT_ID:
+        raise ValueError("MICROSOFT_CLIENT_ID environment variable must be set in production")
+    if not MICROSOFT_CLIENT_SECRET:
+        raise ValueError("MICROSOFT_CLIENT_SECRET environment variable must be set in production")
+
 # Force HTTPS for OAuth redirects in production
 if not DEBUG:
     # This ensures that allauth generates HTTPS URLs for OAuth redirects
