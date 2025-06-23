@@ -17,10 +17,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = env('SECRET_KEY', default='your-secret-key')
 
-DEBUG = env.bool('DEBUG', default=True)
+# More production-safe: default to False in production-like environments
+DEBUG = env.bool('DEBUG', default=False)
 
 # Critical: Set this early to ensure proper HTTPS detection in production
-if not env.bool('DEBUG', default=True):
+if not DEBUG:
     # Set HTTPS environment variable to force Django to recognize HTTPS
     os.environ.setdefault('HTTPS', 'on')
     # Azure Container Apps and App Service use X-Forwarded-Proto header
