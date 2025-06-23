@@ -152,7 +152,11 @@ AZURE_TRANSLATION_SOURCE_URI = env('AZURE_TRANSLATION_SOURCE_URI', default='')
 AZURE_TRANSLATION_TARGET_URI = env('AZURE_TRANSLATION_TARGET_URI', default='')
 
 # Microsoft Authentication settings
-SITE_ID = 1
+SITE_ID = env.int('SITE_ID', default=1)
+
+# In production, use the production site (Site ID 2) if not explicitly set
+if not DEBUG and env.int('SITE_ID', default=None) is None:
+    SITE_ID = 2  # Production site with www.babelscrib.com domain
 
 # Microsoft OAuth settings from environment variables
 MICROSOFT_CLIENT_ID = env('MICROSOFT_CLIENT_ID', default='')

@@ -2,6 +2,10 @@
 set -e
 
 echo "Starting BabelScrib production container..."
+echo "Environment: PRODUCTION"
+echo "DEBUG: ${DEBUG:-False}"
+echo "DOMAIN: ${DOMAIN:-www.babelscrib.com}"
+echo "SITE_NAME: ${SITE_NAME:-www.babelscrib.com}"
 
 # Wait for database to be ready (if using external DB)
 echo "Checking database connection..."
@@ -23,9 +27,15 @@ else:
     print('Superuser already exists.')
 " || true
 
-# Set up Site and SocialApp for production
-echo "Setting up Site and SocialApp configuration..."
-python manage.py setup_production_site --domain "${DOMAIN:-www.babelscrib.com}" --name "${SITE_NAME:-BabelScrib}"
+# Ensure production site exists with correct domain
+echo "Setting up production site configuration..."
+echo "Step 1: Adding production site with exact domain..."
+python manage.py add_production_site --domain "${DOMAIN:-www.babelscrib.com}" --name "${SITE_NAME:-www.babelscrib.com}"
+
+echo "Step 2: Setting up Microsoft SocialApp for production..."
+python manage.py setup_production_site --domain "${DOMAIN:-www.babelscrib.com}" --name "${SITE_NAME:-BabelScrib}" --force-update
+
+echo "Production site configuration completed!"
 
 echo "Starting Gunicorn server..."
 exec "$@"
