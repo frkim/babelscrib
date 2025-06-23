@@ -45,6 +45,29 @@ class Command(BaseCommand):
         self.stdout.write(f'Domain: {domain}')
         self.stdout.write(f'Display Name: {site_name}')
         
+        # Remove development site if it exists (for production cleanup)
+        try:
+            dev_site = Site.objects.filter(
+                name="www.babelscrib.com Development", 
+                domain="localhost:8000"
+            ).first()
+            if dev_site:
+                dev_site_id = dev_site.pk
+                dev_site.delete()
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f'✓ Removed development site ID {dev_site_id}: www.babelscrib.com Development (localhost:8000)'
+                    )
+                )
+            else:
+                self.stdout.write(
+                    self.style.WARNING('Development site not found: www.babelscrib.com Development (localhost:8000)')
+                )
+        except Exception as e:
+            self.stdout.write(
+                self.style.WARNING(f'Warning: Could not remove development site: {str(e)}')
+            )
+        
         try:
             if site_id:
                 # Update existing site by ID
