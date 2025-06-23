@@ -52,6 +52,17 @@ resource containerAppEnv 'Microsoft.App/managedEnvironments@2023-05-01' = {
   }
 }
 
+// Managed Certificate for Custom Domain
+resource managedCertificate 'Microsoft.App/managedEnvironments/managedCertificates@2023-05-01' = {
+  name: 'babelscrib-certificate'
+  parent: containerAppEnv
+  location: location
+  properties: {
+    subjectName: 'babelscrib.com'
+    domainControlValidation: 'CNAME'
+  }
+}
+
 // Azure Container Registry
 resource acr 'Microsoft.ContainerRegistry/registries@2023-01-01-preview' = {
   name: containerRegistryName
@@ -250,10 +261,23 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
         maxReplicas: prodMaxReplicas
       }
     }
-    ingress: {      external: true
+    ingress: {
+      external: true
       targetPort: 8000
       transport: 'auto'
       allowInsecure: false
+      customDomains: [
+        {
+          name: 'www.babelscrib.com'
+          bindingType: 'SniEnabled'
+          certificateId: managedCertificate.id
+        }
+        {
+          name: 'babelscrib.com'
+          bindingType: 'SniEnabled'
+          certificateId: managedCertificate.id
+        }
+      ]
     }
   }
 }

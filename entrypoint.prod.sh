@@ -23,5 +23,9 @@ else:
     print('Superuser already exists.')
 " || true
 
+# Set up Site and SocialApp for production
+echo "Setting up Site and SocialApp configuration..."
+python manage.py setup_production_site --domain "${DOMAIN:-www.babelscrib.com}" --name "${SITE_NAME:-BabelScrib}"
+
 echo "Starting Gunicorn server..."
 exec "$@"

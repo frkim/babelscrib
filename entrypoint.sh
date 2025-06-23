@@ -16,6 +16,10 @@ python manage.py migrate --noinput
 echo "Collecting static files..."
 python manage.py collectstatic --noinput --clear
 
+# Set up Site and SocialApp for production
+echo "Setting up Site and SocialApp configuration..."
+python manage.py setup_production_site --domain "${DOMAIN:-dev.babelscrib.com}" --name "${SITE_NAME:-BabelScrib}"
+
 # Start the application
 echo "Starting Django server..."
 exec "$@"

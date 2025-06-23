@@ -67,8 +67,50 @@ def health_check(request):
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
         
+        # Check Site configuration for django-allauth
+        site_healthy = True
+        site_error = None
+        try:
+            from django.contrib.sites.models import Site
+            from django.conf import settings
+            site = Site.objects.get(pk=getattr(settings, 'SITE_ID', 1))
+            logger.debug(f"Site check passed: {site.domain}")
+        except Site.DoesNotExist:
+            site_healthy = False
+            site_error = f"Site with ID {getattr(settings, 'SITE_ID', 1)} does not exist"
+            logger.warning(site_error)
+        except Exception as e:
+            site_healthy = False
+            site_error = f"Site check failed: {str(e)}"
+            logger.warning(site_error)
+        
+        # Check SocialApp configuration for Microsoft auth
+        socialapp_healthy = True
+        socialapp_error = None
+        try:
+            from allauth.socialaccount.models import SocialApp
+            microsoft_app = SocialApp.objects.get(provider='microsoft')
+            # Check if it has valid client_id and is associated with a site
+            if not microsoft_app.client_id or microsoft_app.client_id == 'your-client-id-here':
+                socialapp_healthy = False
+                socialapp_error = "Microsoft SocialApp has invalid client_id"
+            elif not microsoft_app.sites.exists():
+                socialapp_healthy = False
+                socialapp_error = "Microsoft SocialApp is not associated with any site"
+            else:
+                logger.debug(f"SocialApp check passed: {microsoft_app.client_id[:8]}...")
+        except SocialApp.DoesNotExist:
+            socialapp_healthy = False
+            socialapp_error = "Microsoft SocialApp does not exist"
+            logger.warning(socialapp_error)
+        except Exception as e:
+            socialapp_healthy = False
+            socialapp_error = f"SocialApp check failed: {str(e)}"
+            logger.warning(socialapp_error)
+        
         # Check Azure Storage connectivity (optional - only if configured)
         storage_healthy = True
+        storage_error = None
         connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
         if connection_string:
             try:
@@ -76,6 +118,7 @@ def health_check(request):
                 fixed_connection_string = debug_connection_string(connection_string)
                 if not fixed_connection_string:
                     storage_healthy = False
+                    storage_error = "Invalid Azure Storage connection string"
                 else:
                     blob_service_client = BlobServiceClient.from_connection_string(fixed_connection_string)
                     # Try to list containers to verify connection
@@ -83,20 +126,32 @@ def health_check(request):
             except Exception as e:
                 logger.warning(f"Azure Storage health check failed: {str(e)}")
                 storage_healthy = False
+                storage_error = str(e)
         
         # Build health status
         health_status = {
-            'status': 'healthy',
+            'status': 'healthy' if site_healthy and socialapp_healthy else 'unhealthy',
             'timestamp': timezone.now().isoformat(),
             'checks': {
                 'database': 'ok',
-                'azure_storage': 'ok' if storage_healthy else 'warning'
+                'site_config': 'ok' if site_healthy else 'error',
+                'microsoft_auth': 'ok' if socialapp_healthy else 'error',
+                'azure_storage': 'ok' if storage_healthy else ('warning' if connection_string else 'not_configured')
             }
         }
         
-        # Return 200 if all critical systems are healthy
-        # Storage warning is not critical as the app can still function
-        return JsonResponse(health_status, status=200)
+        # Add error details if any
+        if site_error:
+            health_status['checks']['site_config_error'] = site_error
+        if socialapp_error:
+            health_status['checks']['microsoft_auth_error'] = socialapp_error
+        if storage_error:
+            health_status['checks']['azure_storage_error'] = storage_error
+        
+        # Return 503 if critical systems (site/auth) are unhealthy
+        # Storage issues are warnings since the app can still function
+        status_code = 200 if site_healthy and socialapp_healthy else 503
+        return JsonResponse(health_status, status=status_code)
         
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
