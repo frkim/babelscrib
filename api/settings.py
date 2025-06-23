@@ -272,7 +272,7 @@ if not DEBUG:
     
     # Trust proxy headers for HTTPS (Critical for Azure Container Apps/App Service)
     # Note: This is moved up to be set earlier, before URL generation
-    # SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     
     # Force HTTPS for all URLs (this ensures OAuth redirects use HTTPS)
     SECURE_SSL_REDIRECT = True
