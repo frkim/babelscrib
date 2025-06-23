@@ -19,14 +19,12 @@ import environ
 # Load environment variables
 env = environ.Env()
 
-# Get or create the default site
-site, created = Site.objects.get_or_create(
-    pk=1,
-    defaults={
-        'domain': 'localhost:8000',
-        'name': 'BabelScrib Development'
-    }
-)
+# Get the default site (don't create if it doesn't exist)
+try:
+    site = Site.objects.get(pk=1)
+except Site.DoesNotExist:
+    print("Warning: Default site (pk=1) does not exist. Please create it manually.")
+    sys.exit(1)
 
 # Create Microsoft Social Application
 microsoft_app, created = SocialApp.objects.get_or_create(
