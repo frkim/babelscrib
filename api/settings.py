@@ -23,6 +23,12 @@ DEBUG = env.bool('DEBUG', default=True)
 if not env.bool('DEBUG', default=True):
     # Set HTTPS environment variable to force Django to recognize HTTPS
     os.environ.setdefault('HTTPS', 'on')
+    # Azure Container Apps and App Service use X-Forwarded-Proto header
+    # This MUST be set before any URL generation happens
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    # Also handle X-Forwarded-Host and X-Forwarded-Port
+    USE_X_FORWARDED_HOST = True
+    USE_X_FORWARDED_PORT = True
 
 ALLOWED_HOSTS = ['*']
 
@@ -68,12 +74,7 @@ MIDDLEWARE = [
 ]
 
 # Additional Azure-specific settings for proper HTTPS handling
-if not DEBUG:
-    # Ensure Django trusts the X-Forwarded-Proto header from Azure
-    USE_X_FORWARDED_HOST = True
-    USE_X_FORWARDED_PORT = True
-    # Critical: This must be set BEFORE any URL generation happens
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# These have been moved earlier in the file to ensure they're set before URL generation
 
 ROOT_URLCONF = 'api.urls'
 
@@ -170,6 +171,9 @@ if not DEBUG:
     ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https'
     # Additional setting to force HTTPS scheme detection
     os.environ['HTTPS'] = 'on'
+    # Force HTTPS for all cookie and session security
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 else:
     ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'http'
 
@@ -277,13 +281,11 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = True
     SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
     
-    # Session security
-    SESSION_COOKIE_SECURE = True
+    # Session security (additional settings)
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
     
-    # CSRF security
-    CSRF_COOKIE_SECURE = True
+    # CSRF security (additional settings) 
     CSRF_COOKIE_HTTPONLY = True
     CSRF_COOKIE_SAMESITE = 'Lax'
     
