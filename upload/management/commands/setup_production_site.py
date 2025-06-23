@@ -15,6 +15,7 @@ from allauth.socialaccount.models import SocialApp
 from django.conf import settings
 import environ
 import os
+import json
 
 
 class Command(BaseCommand):
@@ -118,6 +119,14 @@ class Command(BaseCommand):
                     )
                 )
             
+            # Microsoft Graph configuration with tenant and scope settings
+            key_config = {
+                "tenant": "common",
+                "scope": ["openid", "profile", "email"],
+                "auth_params": {"access_type": "online"}
+            }
+            key_config_json = json.dumps(key_config)
+            
             # Create or get Microsoft SocialApp
             microsoft_app, created = SocialApp.objects.get_or_create(
                 provider='microsoft',
@@ -125,6 +134,7 @@ class Command(BaseCommand):
                     'name': 'Microsoft',
                     'client_id': client_id,
                     'secret': client_secret,
+                    'key': key_config_json,  # Store as JSON string
                 }
             )
             
@@ -141,11 +151,14 @@ class Command(BaseCommand):
                 if force_update or microsoft_app.secret != client_secret:
                     microsoft_app.secret = client_secret
                     updated = True
+                if force_update or microsoft_app.key != key_config_json:
+                    microsoft_app.key = key_config_json
+                    updated = True
                 
                 if updated:
                     microsoft_app.save()
                     self.stdout.write(
-                        self.style.WARNING('✓ Updated Microsoft SocialApp credentials')
+                        self.style.WARNING('✓ Updated Microsoft SocialApp credentials and configuration')
                     )
                 else:
                     self.stdout.write(
@@ -199,8 +212,10 @@ class Command(BaseCommand):
             self.stdout.write('\n' + '='*60)
             self.stdout.write(self.style.SUCCESS('✓ Site and SocialApp setup completed successfully!'))
             self.stdout.write(f'Site: {site_check.name} ({site_check.domain})')
+            self.stdout.write(f'Provider: Microsoft Graph')
             self.stdout.write(f'Client ID: {app_check.client_id}')
             self.stdout.write(f'Secret: {"*" * len(app_check.secret) if app_check.secret else "NOT SET"}')
+            self.stdout.write(f'Key Config: {app_check.key if app_check.key else "NOT SET"}')
             
             if is_production:
                 self.stdout.write(f'\nYou can now test Microsoft login at: https://{site_check.domain}/accounts/microsoft/login/')

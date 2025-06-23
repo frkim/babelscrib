@@ -62,6 +62,12 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+# Additional Azure-specific settings for proper HTTPS handling
+if not DEBUG:
+    # Ensure Django trusts the X-Forwarded-Proto header from Azure
+    USE_X_FORWARDED_HOST = True
+    USE_X_FORWARDED_PORT = True
+
 ROOT_URLCONF = 'api.urls'
 
 TEMPLATES = [
@@ -139,6 +145,13 @@ AZURE_TRANSLATION_TARGET_URI = env('AZURE_TRANSLATION_TARGET_URI', default='')
 
 # Microsoft Authentication settings
 SITE_ID = 1
+
+# Force HTTPS for OAuth redirects in production
+if not DEBUG:
+    # This ensures that allauth generates HTTPS URLs for OAuth redirects
+    ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https'
+else:
+    ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'http'
 
 # Authentication backends
 AUTHENTICATION_BACKENDS = [
@@ -229,8 +242,13 @@ if not DEBUG:
     # Restrict ALLOWED_HOSTS in production
     ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['dev.babelscrib.com', 'babelscrib.com', 'www.babelscrib.com'])
     
-    # Security headers
+    # Trust proxy headers for HTTPS (Critical for Azure Container Apps/App Service)
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    
+    # Force HTTPS for all URLs (this ensures OAuth redirects use HTTPS)
     SECURE_SSL_REDIRECT = True
+    
+    # Security headers
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_HSTS_SECONDS = 31536000  # 1 year
@@ -248,9 +266,11 @@ if not DEBUG:
     CSRF_COOKIE_HTTPONLY = True
     CSRF_COOKIE_SAMESITE = 'Lax'
     
-    # Trust proxy headers for HTTPS (Azure Container Apps)
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     USE_TZ = True
+else:
+    # For development, ensure we can test with http://localhost
+    SECURE_SSL_REDIRECT = False
+    SECURE_PROXY_SSL_HEADER = None
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

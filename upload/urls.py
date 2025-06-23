@@ -14,4 +14,6 @@ urlpatterns = [
     path('test-azure-storage/', views.test_azure_storage, name='test_azure_storage'),
     # Test Microsoft authentication
     path('test-microsoft/', views.test_microsoft, name='test_microsoft'),
+    # Debug OAuth URLs (only for troubleshooting)
+    path('debug-oauth/', views.debug_oauth_urls, name='debug_oauth_urls'),
 ]

@@ -15,6 +15,11 @@ import mimetypes
 from .models import Document
 from .user_utils import UserIsolationService, require_user_session
 
+# Debug imports for OAuth URL testing
+from django.contrib.sites.models import Site
+from django.urls import reverse
+from allauth.socialaccount.models import SocialApp
+
 logger = logging.getLogger(__name__)
 
 # Add translation service imports (optional for testing)
@@ -1030,3 +1035,64 @@ def test_microsoft(request):
     return render(request, 'basic_test.html', {
         'current_time': timezone.now()
     })
+
+@login_required
+def debug_oauth_urls(request):
+    """Debug view to check OAuth URL generation and HTTPS settings"""
+    debug_info = {
+        'request_info': {
+            'is_secure': request.is_secure(),
+            'scheme': request.scheme,
+            'host': request.get_host(),
+            'full_url': request.build_absolute_uri(),
+            'headers': dict(request.headers),
+        },
+        'django_settings': {
+            'DEBUG': settings.DEBUG,
+            'SECURE_SSL_REDIRECT': getattr(settings, 'SECURE_SSL_REDIRECT', 'Not set'),
+            'SECURE_PROXY_SSL_HEADER': getattr(settings, 'SECURE_PROXY_SSL_HEADER', 'Not set'),
+            'ACCOUNT_DEFAULT_HTTP_PROTOCOL': getattr(settings, 'ACCOUNT_DEFAULT_HTTP_PROTOCOL', 'Not set'),
+            'USE_X_FORWARDED_HOST': getattr(settings, 'USE_X_FORWARDED_HOST', 'Not set'),
+            'USE_X_FORWARDED_PORT': getattr(settings, 'USE_X_FORWARDED_PORT', 'Not set'),
+        },
+        'site_info': {},
+        'oauth_urls': {},
+        'social_app_info': {}
+    }
+    
+    # Get current site info
+    try:
+        site = Site.objects.get_current()
+        debug_info['site_info'] = {
+            'domain': site.domain,
+            'name': site.name,
+        }
+    except Exception as e:
+        debug_info['site_info']['error'] = str(e)
+    
+    # Test OAuth URL generation
+    try:
+        callback_url = reverse('microsoft_callback')
+        full_callback_url = request.build_absolute_uri(callback_url)
+        debug_info['oauth_urls'] = {
+            'callback_relative': callback_url,
+            'callback_absolute': full_callback_url,
+            'uses_https': full_callback_url.startswith('https://'),
+        }
+    except Exception as e:
+        debug_info['oauth_urls']['error'] = str(e)
+    
+    # Check SocialApp configuration
+    try:
+        microsoft_app = SocialApp.objects.get(provider='microsoft')
+        debug_info['social_app_info'] = {
+            'name': microsoft_app.name,
+            'client_id': microsoft_app.client_id,
+            'sites': [site.domain for site in microsoft_app.sites.all()],
+        }
+    except SocialApp.DoesNotExist:
+        debug_info['social_app_info']['error'] = 'Microsoft SocialApp not found'
+    except Exception as e:
+        debug_info['social_app_info']['error'] = str(e)
+    
+    return JsonResponse(debug_info, json_dumps_params={'indent': 2})
