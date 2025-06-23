@@ -227,7 +227,7 @@ if DEBUG and env.bool('DJANGO_LOG_ENV_VARS', default=False):
 # Production Security Settings
 if not DEBUG:
     # Restrict ALLOWED_HOSTS in production
-    ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['dev.babelscrib.com', 'babelscrib.com'])
+    ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['dev.babelscrib.com', 'babelscrib.com', 'www.babelscrib.com'])
     
     # Security headers
     SECURE_SSL_REDIRECT = True
@@ -247,6 +247,10 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
     CSRF_COOKIE_HTTPONLY = True
     CSRF_COOKIE_SAMESITE = 'Lax'
+    
+    # Trust proxy headers for HTTPS (Azure Container Apps)
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    USE_TZ = True
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
