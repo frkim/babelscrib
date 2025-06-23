@@ -19,6 +19,11 @@ SECRET_KEY = env('SECRET_KEY', default='your-secret-key')
 
 DEBUG = env.bool('DEBUG', default=True)
 
+# Critical: Set this early to ensure proper HTTPS detection in production
+if not env.bool('DEBUG', default=True):
+    # Set HTTPS environment variable to force Django to recognize HTTPS
+    os.environ.setdefault('HTTPS', 'on')
+
 ALLOWED_HOSTS = ['*']
 
 # Add CSRF trusted origins for production
@@ -67,6 +72,8 @@ if not DEBUG:
     # Ensure Django trusts the X-Forwarded-Proto header from Azure
     USE_X_FORWARDED_HOST = True
     USE_X_FORWARDED_PORT = True
+    # Critical: This must be set BEFORE any URL generation happens
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 ROOT_URLCONF = 'api.urls'
 
@@ -150,6 +157,8 @@ SITE_ID = 1
 if not DEBUG:
     # This ensures that allauth generates HTTPS URLs for OAuth redirects
     ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https'
+    # Additional setting to force HTTPS scheme detection
+    os.environ['HTTPS'] = 'on'
 else:
     ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'http'
 
@@ -243,7 +252,8 @@ if not DEBUG:
     ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['dev.babelscrib.com', 'babelscrib.com', 'www.babelscrib.com'])
     
     # Trust proxy headers for HTTPS (Critical for Azure Container Apps/App Service)
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    # Note: This is moved up to be set earlier, before URL generation
+    # SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     
     # Force HTTPS for all URLs (this ensures OAuth redirects use HTTPS)
     SECURE_SSL_REDIRECT = True
