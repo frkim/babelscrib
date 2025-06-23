@@ -112,8 +112,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // When files are selected, update the drop area and prepare for upload
     fileInput.addEventListener('change', function() {
+        console.log('fileInput change event triggered, files.length:', fileInput.files.length);
         if (fileInput.files.length > 0) {
             const newFiles = Array.from(fileInput.files);
+            console.log('New files selected:', newFiles.map(f => f.name));
             
             // Add new files to current selection (avoid duplicates by name and size)
             newFiles.forEach(file => {
@@ -122,6 +124,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
             
+            console.log('Current files after merge:', currentFiles.map(f => f.name));
+            
             // Update the file input with all accumulated files
             const dataTransfer = new DataTransfer();
             currentFiles.forEach(file => {
@@ -129,6 +133,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             fileInput.files = dataTransfer.files;
             
+            console.log('Final fileInput.files.length:', fileInput.files.length);
             updateFileDisplay(fileInput.files);
         }
     });
@@ -269,6 +274,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
             
+            // Update upload button state when files are cleared
+            validateEmailAndUpdateButton();
+            
             return;
         }
 
@@ -309,6 +317,10 @@ document.addEventListener('DOMContentLoaded', function() {
         html += '<p><small>' + (window.BabelScribI18n ? window.BabelScribI18n.t('click_add_documents') : 'Click here to add other documents') + '</small></p>';
         
         fileDrop.innerHTML = html;
+        
+        // Update upload button state based on file selection and email validity
+        console.log('updateFileDisplay: calling validateEmailAndUpdateButton');
+        validateEmailAndUpdateButton();
     }
 
     function getFileExtension(filename) {
@@ -912,24 +924,42 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function validateEmailAndUpdateButton() {
         const email = emailInput.value.trim();
+        const hasFiles = fileInput.files && fileInput.files.length > 0;
+        
+        console.log('validateEmailAndUpdateButton called:');
+        console.log('- Email:', email);
+        console.log('- Email valid:', isValidEmail(email));
+        console.log('- Has files:', hasFiles);
+        console.log('- File count:', fileInput.files ? fileInput.files.length : 0);
         
         if (email === '') {
             emailError.textContent = '';
             emailInput.classList.remove('invalid', 'valid');
             uploadButton.disabled = true;
+            console.log('- Button disabled: email empty');
             return false;
         }
         
         if (isValidEmail(email)) {
             clearEmailError();
-            uploadButton.disabled = false;
+            // Enable upload button only if email is valid AND files are selected
+            uploadButton.disabled = !hasFiles;
+            console.log('- Button disabled set to:', !hasFiles);
             // Save valid email to cookie
             saveEmailToCookie(email);
             return true;
         } else {
             showEmailError(window.BabelScribI18n ? window.BabelScribI18n.t('please_enter_valid_email') : 'Please enter a valid email address');
             uploadButton.disabled = true;
+            console.log('- Button disabled: invalid email');
             return false;
         }
     }
+    
+    // Make function globally accessible
+    window.validateEmailAndUpdateButton = validateEmailAndUpdateButton;
+    
+    // Initial validation check on page load
+    console.log('Running initial validation check...');
+    validateEmailAndUpdateButton();
 });
