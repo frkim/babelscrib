@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authentication Diagnostics - BabelScrib</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .diagnostics-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            margin: 20px 0;
+            padding: 20px;
+        }
+        .test-section.success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .test-section.error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .test-section.warning {
+            background: #fff3cd;
+            border-color: #ffeaa7;
+        }
+        .test-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+        .status-icon {
+            margin-right: 10px;
+            font-size: 1.5em;
+        }
+        .status-icon.success { color: #28a745; }
+        .status-icon.error { color: #dc3545; }
+        .status-icon.warning { color: #ffc107; }
+        .status-icon.info { color: #17a2b8; }
+        .test-details {
+            margin-top: 10px;
+        }
+        .test-details ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .test-details li {
+            margin: 5px 0;
+        }
+        .error-list {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .error-list ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .summary-section {
+            background: #e9ecef;
+            border: 2px solid #6c757d;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .summary-section.success {
+            background: #d1ecf1;
+            border-color: #bee5eb;
+            color: #0c5460;
+        }
+        .summary-section.error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .info-item {
+            background: #ffffff;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #495057;
+            margin-bottom: 5px;
+        }
+        .info-value {
+            font-family: monospace;
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+        .back-button {
+            display: inline-block;
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            transition: background-color 0.2s;
+        }
+        .back-button:hover {
+            background: #0056b3;
+            color: white;
+            text-decoration: none;
+        }
+        .refresh-button {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-left: 10px;
+            transition: background-color 0.2s;
+        }
+        .refresh-button:hover {
+            background: #1e7e34;
+            color: white;
+            text-decoration: none;
+        }
+        @media (max-width: 768px) {
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+            .diagnostics-container {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="diagnostics-container">
+        <div style="margin-bottom: 20px;">
+            <a href="{% url 'upload_page' %}" class="back-button">← Back to Main Page</a>
+            <a href="{% url 'test_authentication_config' %}" class="refresh-button">🔄 Refresh Test</a>
+        </div>
+
+        <h1 style="text-align: center; color: #333; margin-bottom: 30px;">
+            🔐 Authentication Configuration Diagnostics
+        </h1>
+
+        {% if test_results %}
+            <!-- Summary Section -->
+            <div class="summary-section {% if test_results.overall_status == 'success' %}success{% else %}error{% endif %}">
+                <h2 style="margin-top: 0;">
+                    {% if test_results.overall_status == 'success' %}
+                        ✅ All Authentication Tests Passed
+                    {% else %}
+                        ❌ Authentication Tests Failed
+                    {% endif %}
+                </h2>
+                <p><strong>Test completed at:</strong> {{ test_results.timestamp }}</p>
+                <div style="display: flex; justify-content: center; gap: 30px; margin-top: 15px; flex-wrap: wrap;">
+                    <div>
+                        <strong>✅ Passed:</strong> {{ test_results.passed_tests|default:0 }}
+                    </div>
+                    <div>
+                        <strong>❌ Failed:</strong> {{ test_results.failed_tests|default:0 }}
+                    </div>
+                    <div>
+                        <strong>⚠️ Warnings:</strong> {{ test_results.warnings|default:0 }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Site Configuration Test -->
+            {% if test_results.site_test %}
+                <div class="test-section {% if test_results.site_test.status == 'success' %}success{% elif test_results.site_test.errors %}error{% else %}warning{% endif %}">
+                    <div class="test-title">
+                        <span class="status-icon {% if test_results.site_test.status == 'success' %}success{% else %}error{% endif %}">
+                            {% if test_results.site_test.status == 'success' %}✅{% else %}❌{% endif %}
+                        </span>
+                        Django Site Configuration
+                    </div>
+                    
+                    {% if test_results.site_test.site_info %}
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <div class="info-label">Site ID</div>
+                                <div class="info-value">{{ test_results.site_test.site_info.id }}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Site Domain</div>
+                                <div class="info-value">{{ test_results.site_test.site_info.domain }}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Site Name</div>
+                                <div class="info-value">{{ test_results.site_test.site_info.name }}</div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    <div class="test-details">
+                        <strong>Test Details:</strong>
+                        <ul>
+                            {% for detail in test_results.site_test.details %}
+                                <li>{{ detail }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    {% if test_results.site_test.errors %}
+                        <div class="error-list">
+                            <strong>Errors Found:</strong>
+                            <ul>
+                                {% for error in test_results.site_test.errors %}
+                                    <li style="color: #dc3545;">{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            <!-- SocialApp Configuration Test -->
+            {% if test_results.socialapp_test %}
+                <div class="test-section {% if test_results.socialapp_test.status == 'success' %}success{% elif test_results.socialapp_test.errors %}error{% else %}warning{% endif %}">
+                    <div class="test-title">
+                        <span class="status-icon {% if test_results.socialapp_test.status == 'success' %}success{% else %}error{% endif %}">
+                            {% if test_results.socialapp_test.status == 'success' %}✅{% else %}❌{% endif %}
+                        </span>
+                        Microsoft SocialApp Configuration
+                    </div>
+                    
+                    {% if test_results.socialapp_test.socialapp_info %}
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <div class="info-label">App Name</div>
+                                <div class="info-value">{{ test_results.socialapp_test.socialapp_info.name }}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Provider</div>
+                                <div class="info-value">{{ test_results.socialapp_test.socialapp_info.provider }}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Client ID</div>
+                                <div class="info-value">{{ test_results.socialapp_test.socialapp_info.client_id }}</div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    {% if test_results.socialapp_test.associated_sites %}
+                        <div style="margin-top: 15px;">
+                            <strong>Associated Sites:</strong>
+                            <ul>
+                                {% for site in test_results.socialapp_test.associated_sites %}
+                                    <li>{{ site.domain }} ({{ site.name }})</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+
+                    <div class="test-details">
+                        <strong>Test Details:</strong>
+                        <ul>
+                            {% for detail in test_results.socialapp_test.details %}
+                                <li>{{ detail }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    {% if test_results.socialapp_test.errors %}
+                        <div class="error-list">
+                            <strong>Errors Found:</strong>
+                            <ul>
+                                {% for error in test_results.socialapp_test.errors %}
+                                    <li style="color: #dc3545;">{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            <!-- OAuth URLs Test -->
+            {% if test_results.oauth_urls_test %}
+                <div class="test-section {% if test_results.oauth_urls_test.status == 'success' %}success{% elif test_results.oauth_urls_test.errors %}error{% else %}warning{% endif %}">
+                    <div class="test-title">
+                        <span class="status-icon {% if test_results.oauth_urls_test.status == 'success' %}success{% elif test_results.oauth_urls_test.errors %}error{% else %}info{% endif %}">
+                            {% if test_results.oauth_urls_test.status == 'success' %}✅{% elif test_results.oauth_urls_test.errors %}❌{% else %}ℹ️{% endif %}
+                        </span>
+                        OAuth URLs & HTTPS Configuration
+                    </div>
+                    
+                    {% if test_results.oauth_urls_test.request_info %}
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <div class="info-label">Request Scheme</div>
+                                <div class="info-value">{{ test_results.oauth_urls_test.request_info.scheme }}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Request Host</div>
+                                <div class="info-value">{{ test_results.oauth_urls_test.request_info.host }}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Is Secure</div>
+                                <div class="info-value">{{ test_results.oauth_urls_test.request_info.is_secure }}</div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    {% if test_results.oauth_urls_test.oauth_urls %}
+                        <div style="margin-top: 15px;">
+                            <strong>OAuth URLs:</strong>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <div class="info-label">Callback URL</div>
+                                    <div class="info-value">{{ test_results.oauth_urls_test.oauth_urls.callback_absolute }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Uses HTTPS</div>
+                                    <div class="info-value">{{ test_results.oauth_urls_test.oauth_urls.uses_https }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    {% if test_results.oauth_urls_test.https_settings %}
+                        <div style="margin-top: 15px;">
+                            <strong>Django HTTPS Settings:</strong>
+                            <div class="info-grid">
+                                {% for key, value in test_results.oauth_urls_test.https_settings.items %}
+                                    <div class="info-item">
+                                        <div class="info-label">{{ key }}</div>
+                                        <div class="info-value">{{ value|default:"Not set" }}</div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    <div class="test-details">
+                        <strong>Test Details:</strong>
+                        <ul>
+                            {% for detail in test_results.oauth_urls_test.details %}
+                                <li>{{ detail }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    {% if test_results.oauth_urls_test.errors %}
+                        <div class="error-list">
+                            <strong>Errors Found:</strong>
+                            <ul>
+                                {% for error in test_results.oauth_urls_test.errors %}
+                                    <li style="color: #dc3545;">{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            <!-- Overall Errors -->
+            {% if test_results.errors %}
+                <div class="test-section error">
+                    <div class="test-title">
+                        <span class="status-icon error">❌</span>
+                        Overall Test Errors
+                    </div>
+                    <div class="error-list">
+                        <ul>
+                            {% for error in test_results.errors %}
+                                <li style="color: #dc3545;">{{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            {% endif %}
+
+            <!-- Recommendations -->
+            <div class="test-section info" style="background: #e7f3ff; border-color: #b3d7ff;">
+                <div class="test-title">
+                    <span class="status-icon info">💡</span>
+                    Recommendations
+                </div>
+                <ul>
+                    <li>Ensure the Site domain matches your actual domain in production</li>
+                    <li>Verify that your Microsoft app registration redirect URIs match the callback URLs shown above</li>
+                    <li>Use HTTPS in production environments for security</li>
+                    <li>Keep your client secret secure and never expose it in client-side code</li>
+                    <li>Test OAuth login flow after fixing any configuration issues</li>
+                </ul>
+            </div>
+
+        {% else %}
+            <div class="test-section error">
+                <div class="test-title">
+                    <span class="status-icon error">❌</span>
+                    No Test Results Available
+                </div>
+                <p>Unable to retrieve authentication test results. Please check the server logs for more information.</p>
+            </div>
+        {% endif %}
+
+        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+            <p style="color: #666; font-size: 0.9em;">
+                This diagnostic tool helps verify your Django authentication configuration for Microsoft OAuth.
+                <br>
+                For more help, check the <a href="{% url 'debug_oauth_urls' %}" style="color: #007bff;">OAuth debug page</a>.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

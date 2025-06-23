@@ -104,11 +104,12 @@
                 text-indent: 0;
                 padding: 8px;
             }
-            /* Storage Test Button mobile styles */
-            .header a[href*="test_azure_storage"] {
+            /* Test Button mobile styles */
+            .header a[href*="test_azure_storage"],
+            .header a[href*="test_authentication_config"] {
                 font-size: 12px !important;
                 padding: 4px 8px !important;
-                margin-left: auto;
+                margin-left: 5px;
             }
         }
         .file-drop {
@@ -679,6 +680,12 @@
                    onmouseover="this.style.backgroundColor='#f0f0f0'; this.style.color='#333'"
                    onmouseout="this.style.backgroundColor='transparent'; this.style.color='#666'"
                    title="Test Azure Storage Configuration" data-i18n-attr="title" data-i18n="test_azure_storage_configuration">⚙️ <span data-i18n="storage_test">Storage Test</span></a>
+                
+                <!-- Authentication Test Link -->
+                <a href="{% url 'test_authentication_config' %}" style="color: #666; text-decoration: none; font-size: 14px; padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px; transition: all 0.2s; flex-shrink: 0; white-space: nowrap;" 
+                   onmouseover="this.style.backgroundColor='#f0f0f0'; this.style.color='#333'"
+                   onmouseout="this.style.backgroundColor='transparent'; this.style.color='#666'"
+                   title="Test Authentication Configuration" data-i18n-attr="title" data-i18n="test_authentication_configuration">🔐 <span data-i18n="auth_test">Auth Test</span></a>
             </div>
         </div>
           <!-- Page Title -->

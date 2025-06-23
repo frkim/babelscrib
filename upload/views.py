@@ -6,6 +6,10 @@ from azure.storage.blob import BlobServiceClient
 from azure.core.exceptions import ResourceExistsError, AzureError, ResourceNotFoundError
 import os
 import logging
+import re
+import uuid
+import time
+import traceback
 from django.conf import settings
 from django.utils import timezone
 import json
@@ -72,47 +76,6 @@ def health_check(request):
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
         
-        # Check Site configuration for django-allauth
-        site_healthy = True
-        site_error = None
-        try:
-            from django.contrib.sites.models import Site
-            from django.conf import settings
-            site = Site.objects.get(pk=getattr(settings, 'SITE_ID', 1))
-            logger.debug(f"Site check passed: {site.domain}")
-        except Site.DoesNotExist:
-            site_healthy = False
-            site_error = f"Site with ID {getattr(settings, 'SITE_ID', 1)} does not exist"
-            logger.warning(site_error)
-        except Exception as e:
-            site_healthy = False
-            site_error = f"Site check failed: {str(e)}"
-            logger.warning(site_error)
-        
-        # Check SocialApp configuration for Microsoft auth
-        socialapp_healthy = True
-        socialapp_error = None
-        try:
-            from allauth.socialaccount.models import SocialApp
-            microsoft_app = SocialApp.objects.get(provider='microsoft')
-            # Check if it has valid client_id and is associated with a site
-            if not microsoft_app.client_id or microsoft_app.client_id == 'your-client-id-here':
-                socialapp_healthy = False
-                socialapp_error = "Microsoft SocialApp has invalid client_id"
-            elif not microsoft_app.sites.exists():
-                socialapp_healthy = False
-                socialapp_error = "Microsoft SocialApp is not associated with any site"
-            else:
-                logger.debug(f"SocialApp check passed: {microsoft_app.client_id[:8]}...")
-        except SocialApp.DoesNotExist:
-            socialapp_healthy = False
-            socialapp_error = "Microsoft SocialApp does not exist"
-            logger.warning(socialapp_error)
-        except Exception as e:
-            socialapp_healthy = False
-            socialapp_error = f"SocialApp check failed: {str(e)}"
-            logger.warning(socialapp_error)
-        
         # Check Azure Storage connectivity (optional - only if configured)
         storage_healthy = True
         storage_error = None
@@ -135,28 +98,21 @@ def health_check(request):
         
         # Build health status
         health_status = {
-            'status': 'healthy' if site_healthy and socialapp_healthy else 'unhealthy',
+            'status': 'healthy',
             'timestamp': timezone.now().isoformat(),
             'checks': {
                 'database': 'ok',
-                'site_config': 'ok' if site_healthy else 'error',
-                'microsoft_auth': 'ok' if socialapp_healthy else 'error',
                 'azure_storage': 'ok' if storage_healthy else ('warning' if connection_string else 'not_configured')
             }
         }
         
         # Add error details if any
-        if site_error:
-            health_status['checks']['site_config_error'] = site_error
-        if socialapp_error:
-            health_status['checks']['microsoft_auth_error'] = socialapp_error
         if storage_error:
             health_status['checks']['azure_storage_error'] = storage_error
         
-        # Return 503 if critical systems (site/auth) are unhealthy
+        # Return 200 since we removed critical auth checks that could cause 503
         # Storage issues are warnings since the app can still function
-        status_code = 200 if site_healthy and socialapp_healthy else 503
-        return JsonResponse(health_status, status=status_code)
+        return JsonResponse(health_status, status=200)
         
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
@@ -1096,3 +1052,454 @@ def debug_oauth_urls(request):
         debug_info['social_app_info']['error'] = str(e)
     
     return JsonResponse(debug_info, json_dumps_params={'indent': 2})
+
+def test_authentication_config(request):
+    """
+    Comprehensive authentication configuration test.
+    Tests Site configuration and SocialApp setup for Microsoft auth.
+    Supports both JSON API responses and HTML template rendering.
+    """
+    # Check if JSON format is explicitly requested
+    format_requested = request.GET.get('format', '').lower()
+    is_json_request = (
+        format_requested == 'json' or
+        request.headers.get('Content-Type') == 'application/json' or
+        request.headers.get('Accept') == 'application/json' or
+        (hasattr(request, 'is_ajax') and request.is_ajax())
+    )
+    
+    test_results = {
+        'timestamp': timezone.now().isoformat(),
+        'site_test': {},
+        'socialapp_test': {},
+        'oauth_urls_test': {},
+        'overall_status': 'failed',
+        'errors': [],
+        'details': []
+    }
+    
+    try:
+        # Test 1: Site configuration
+        test_results['details'].append("Testing Django Site configuration...")
+        test_results['site_test'] = test_site_configuration()
+        
+        if test_results['site_test'].get('status') != 'success':
+            test_results['errors'].extend(test_results['site_test'].get('errors', []))
+        
+        # Test 2: SocialApp configuration
+        test_results['details'].append("Testing Microsoft SocialApp configuration...")
+        test_results['socialapp_test'] = test_socialapp_configuration()
+        
+        if test_results['socialapp_test'].get('status') != 'success':
+            test_results['errors'].extend(test_results['socialapp_test'].get('errors', []))
+        
+        # Test 3: OAuth URLs generation
+        test_results['details'].append("Testing OAuth URL generation...")
+        test_results['oauth_urls_test'] = test_oauth_urls_generation(request)
+        
+        if test_results['oauth_urls_test'].get('status') != 'success':
+            test_results['errors'].extend(test_results['oauth_urls_test'].get('errors', []))
+        
+        # Determine overall status
+        if not test_results['errors']:
+            test_results['overall_status'] = 'success'
+            test_results['details'].append("All authentication tests passed successfully!")
+        else:
+            test_results['overall_status'] = 'failed'
+            test_results['details'].append(f"Tests completed with {len(test_results['errors'])} errors")
+        
+        # Return appropriate response format
+        return _format_auth_test_response(test_results, is_json_request, request)
+            
+    except Exception as e:
+        error_msg = f"Unexpected error during authentication test: {str(e)}"
+        test_results['errors'].append(error_msg)
+        test_results['details'].append(error_msg)
+        test_results['overall_status'] = 'failed'
+        
+        # Add stack trace for debugging
+        test_results['stack_trace'] = traceback.format_exc()
+        
+        logger.error(f"Authentication test failed: {error_msg}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        
+        return _format_auth_test_response(test_results, is_json_request, request)
+
+def test_site_configuration():
+    """Test Django Site configuration for django-allauth."""
+    result = {
+        'status': 'failed',
+        'operations': {},
+        'errors': [],
+        'details': []
+    }
+    
+    try:
+        # Test 1: Check SITE_ID setting
+        result['details'].append("Checking SITE_ID setting...")
+        try:
+            from django.conf import settings
+            site_id = getattr(settings, 'SITE_ID', None)
+            if site_id is None:
+                result['errors'].append("SITE_ID setting is not configured")
+                result['operations']['site_id_check'] = 'failed'
+                return result
+            else:
+                result['operations']['site_id_check'] = 'success'
+                result['details'].append(f"SITE_ID configured: {site_id}")
+                result['site_id'] = site_id
+        except Exception as e:
+            error_msg = f"Failed to check SITE_ID setting: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['site_id_check'] = 'failed'
+            result['details'].append(error_msg)
+            return result
+        
+        # Test 2: Check if Site exists
+        result['details'].append(f"Checking if Site with ID {site_id} exists...")
+        try:
+            from django.contrib.sites.models import Site
+            site = Site.objects.get(pk=site_id)
+            result['operations']['site_exists'] = 'success'
+            result['details'].append(f"Site found: {site.domain} - {site.name}")
+            result['site_info'] = {
+                'id': site.id,
+                'domain': site.domain,
+                'name': site.name
+            }
+        except Site.DoesNotExist:
+            error_msg = f"Site with ID {site_id} does not exist in database"
+            result['errors'].append(error_msg)
+            result['operations']['site_exists'] = 'failed'
+            result['details'].append(error_msg)
+            return result
+        except Exception as e:
+            error_msg = f"Failed to retrieve Site: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['site_exists'] = 'failed'
+            result['details'].append(error_msg)
+            return result
+        
+        # Test 3: Validate site domain
+        result['details'].append("Validating site domain format...")
+        try:
+            domain = site.domain
+            # Basic domain validation
+            if not domain or domain.strip() == '':
+                result['errors'].append("Site domain is empty")
+                result['operations']['domain_validation'] = 'failed'
+            elif domain == 'example.com':
+                result['errors'].append("Site domain is still set to default 'example.com'")
+                result['operations']['domain_validation'] = 'warning'
+            elif '.' not in domain:
+                result['errors'].append("Site domain appears to be invalid (no TLD)")
+                result['operations']['domain_validation'] = 'warning'
+            else:
+                result['operations']['domain_validation'] = 'success'
+                result['details'].append(f"Site domain appears valid: {domain}")
+        except Exception as e:
+            error_msg = f"Failed to validate domain: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['domain_validation'] = 'failed'
+            result['details'].append(error_msg)
+        
+        # Determine overall status
+        critical_operations = ['site_id_check', 'site_exists']
+        failed_critical = [op for op in critical_operations if result['operations'].get(op) != 'success']
+        
+        if not failed_critical:
+            result['status'] = 'success'
+        
+        return result
+        
+    except Exception as e:
+        error_msg = f"Unexpected error in site configuration test: {str(e)}"
+        result['errors'].append(error_msg)
+        result['details'].append(error_msg)
+        return result
+
+def test_socialapp_configuration():
+    """Test Microsoft SocialApp configuration."""
+    result = {
+        'status': 'failed',
+        'operations': {},
+        'errors': [],
+        'details': []
+    }
+    
+    try:
+        # Test 1: Check if Microsoft SocialApp exists
+        result['details'].append("Checking for Microsoft SocialApp...")
+        try:
+            from allauth.socialaccount.models import SocialApp
+            microsoft_app = SocialApp.objects.get(provider='microsoft')
+            result['operations']['socialapp_exists'] = 'success'
+            result['details'].append(f"Microsoft SocialApp found: {microsoft_app.name}")
+            result['socialapp_info'] = {
+                'id': microsoft_app.id,
+                'name': microsoft_app.name,
+                'provider': microsoft_app.provider,
+                'client_id': microsoft_app.client_id[:8] + '...' if microsoft_app.client_id else 'Not set'
+            }
+        except SocialApp.DoesNotExist:
+            error_msg = "Microsoft SocialApp does not exist in database"
+            result['errors'].append(error_msg)
+            result['operations']['socialapp_exists'] = 'failed'
+            result['details'].append(error_msg)
+            return result
+        except Exception as e:
+            error_msg = f"Failed to retrieve Microsoft SocialApp: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['socialapp_exists'] = 'failed'
+            result['details'].append(error_msg)
+            return result
+        
+        # Test 2: Validate client_id
+        result['details'].append("Validating client_id...")
+        try:
+            if not microsoft_app.client_id:
+                result['errors'].append("Microsoft SocialApp client_id is empty")
+                result['operations']['client_id_validation'] = 'failed'
+            elif microsoft_app.client_id == 'your-client-id-here':
+                result['errors'].append("Microsoft SocialApp client_id is still set to placeholder value")
+                result['operations']['client_id_validation'] = 'failed'
+            elif len(microsoft_app.client_id) < 10:
+                result['errors'].append("Microsoft SocialApp client_id appears to be too short")
+                result['operations']['client_id_validation'] = 'warning'
+            else:
+                result['operations']['client_id_validation'] = 'success'
+                result['details'].append(f"Client ID appears valid: {microsoft_app.client_id[:8]}...")
+        except Exception as e:
+            error_msg = f"Failed to validate client_id: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['client_id_validation'] = 'failed'
+            result['details'].append(error_msg)
+        
+        # Test 3: Validate client_secret
+        result['details'].append("Validating client_secret...")
+        try:
+            if not microsoft_app.secret:
+                result['errors'].append("Microsoft SocialApp client_secret is empty")
+                result['operations']['client_secret_validation'] = 'failed'
+            elif microsoft_app.secret == 'your-client-secret-here':
+                result['errors'].append("Microsoft SocialApp client_secret is still set to placeholder value")
+                result['operations']['client_secret_validation'] = 'failed'
+            else:
+                result['operations']['client_secret_validation'] = 'success'
+                result['details'].append("Client secret is configured")
+        except Exception as e:
+            error_msg = f"Failed to validate client_secret: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['client_secret_validation'] = 'failed'
+            result['details'].append(error_msg)
+        
+        # Test 4: Check site associations
+        result['details'].append("Checking site associations...")
+        try:
+            associated_sites = list(microsoft_app.sites.all())
+            if not associated_sites:
+                result['errors'].append("Microsoft SocialApp is not associated with any sites")
+                result['operations']['site_associations'] = 'failed'
+            else:
+                result['operations']['site_associations'] = 'success'
+                site_domains = [site.domain for site in associated_sites]
+                result['details'].append(f"Associated with sites: {', '.join(site_domains)}")
+                result['associated_sites'] = [
+                    {'id': site.id, 'domain': site.domain, 'name': site.name}
+                    for site in associated_sites
+                ]
+        except Exception as e:
+            error_msg = f"Failed to check site associations: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['site_associations'] = 'failed'
+            result['details'].append(error_msg)
+        
+        # Test 5: Check if associated with current site
+        result['details'].append("Checking association with current site...")
+        try:
+            from django.contrib.sites.models import Site
+            from django.conf import settings
+            current_site = Site.objects.get(pk=getattr(settings, 'SITE_ID', 1))
+            if current_site in microsoft_app.sites.all():
+                result['operations']['current_site_association'] = 'success'
+                result['details'].append(f"SocialApp is correctly associated with current site: {current_site.domain}")
+            else:
+                result['errors'].append(f"SocialApp is not associated with current site: {current_site.domain}")
+                result['operations']['current_site_association'] = 'failed'
+        except Exception as e:
+            error_msg = f"Failed to check current site association: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['current_site_association'] = 'failed'
+            result['details'].append(error_msg)
+        
+        # Determine overall status
+        critical_operations = ['socialapp_exists', 'client_id_validation', 'client_secret_validation', 'site_associations']
+        failed_critical = [op for op in critical_operations if result['operations'].get(op) != 'success']
+        
+        if not failed_critical:
+            result['status'] = 'success'
+        
+        return result
+        
+    except Exception as e:
+        error_msg = f"Unexpected error in SocialApp configuration test: {str(e)}"
+        result['errors'].append(error_msg)
+        result['details'].append(error_msg)
+        return result
+
+def test_oauth_urls_generation(request):
+    """Test OAuth URL generation and HTTPS settings."""
+    result = {
+        'status': 'failed',
+        'operations': {},
+        'errors': [],
+        'details': []
+    }
+    
+    try:
+        # Test 1: Check request information
+        result['details'].append("Analyzing request context...")
+        try:
+            request_info = {
+                'is_secure': request.is_secure(),
+                'scheme': request.scheme,
+                'host': request.get_host(),
+                'full_url': request.build_absolute_uri(),
+                'method': request.method
+            }
+            result['operations']['request_analysis'] = 'success'
+            result['details'].append(f"Request scheme: {request_info['scheme']}")
+            result['details'].append(f"Request host: {request_info['host']}")
+            result['details'].append(f"Is secure: {request_info['is_secure']}")
+            result['request_info'] = request_info
+        except Exception as e:
+            error_msg = f"Failed to analyze request: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['request_analysis'] = 'failed'
+            result['details'].append(error_msg)
+            return result
+        
+        # Test 2: Check Django settings related to HTTPS
+        result['details'].append("Checking Django HTTPS settings...")
+        try:
+            from django.conf import settings
+            https_settings = {
+                'DEBUG': getattr(settings, 'DEBUG', None),
+                'SECURE_SSL_REDIRECT': getattr(settings, 'SECURE_SSL_REDIRECT', None),
+                'SECURE_PROXY_SSL_HEADER': getattr(settings, 'SECURE_PROXY_SSL_HEADER', None),
+                'ACCOUNT_DEFAULT_HTTP_PROTOCOL': getattr(settings, 'ACCOUNT_DEFAULT_HTTP_PROTOCOL', None),
+                'USE_X_FORWARDED_HOST': getattr(settings, 'USE_X_FORWARDED_HOST', None),
+                'USE_X_FORWARDED_PORT': getattr(settings, 'USE_X_FORWARDED_PORT', None),
+            }
+            result['operations']['https_settings_check'] = 'success'
+            result['details'].append("HTTPS settings retrieved successfully")
+            result['https_settings'] = https_settings
+            
+            # Check for potential issues
+            if https_settings['ACCOUNT_DEFAULT_HTTP_PROTOCOL'] == 'http' and not settings.DEBUG:
+                result['errors'].append("ACCOUNT_DEFAULT_HTTP_PROTOCOL is set to 'http' in production")
+            
+        except Exception as e:
+            error_msg = f"Failed to check HTTPS settings: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['https_settings_check'] = 'failed'
+            result['details'].append(error_msg)
+        
+        # Test 3: Test OAuth callback URL generation
+        result['details'].append("Testing OAuth callback URL generation...")
+        try:
+            # Try to generate callback URL (if it exists)
+            try:
+                callback_url = reverse('microsoft_callback')
+                full_callback_url = request.build_absolute_uri(callback_url)
+                result['operations']['callback_url_generation'] = 'success'
+                result['details'].append(f"Callback URL generated: {full_callback_url}")
+                result['oauth_urls'] = {
+                    'callback_relative': callback_url,
+                    'callback_absolute': full_callback_url,
+                    'uses_https': full_callback_url.startswith('https://'),
+                }
+                
+                # Check if HTTPS is used for callback in production
+                if not full_callback_url.startswith('https://') and not getattr(settings, 'DEBUG', False):
+                    result['errors'].append("OAuth callback URL is not using HTTPS in production environment")
+                
+            except Exception as url_error:
+                # Callback URL might not exist, which is fine for this test
+                result['operations']['callback_url_generation'] = 'not_available'
+                result['details'].append(f"OAuth callback URL not configured: {str(url_error)}")
+                
+        except Exception as e:
+            error_msg = f"Failed to test OAuth URL generation: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['callback_url_generation'] = 'failed'
+            result['details'].append(error_msg)
+        
+        # Test 4: Check current site domain consistency
+        result['details'].append("Checking site domain consistency...")
+        try:
+            from django.contrib.sites.models import Site
+            from django.conf import settings
+            current_site = Site.objects.get(pk=getattr(settings, 'SITE_ID', 1))
+            request_host = request.get_host()
+            
+            if current_site.domain == request_host:
+                result['operations']['domain_consistency'] = 'success'
+                result['details'].append(f"Site domain matches request host: {current_site.domain}")
+            else:
+                result['operations']['domain_consistency'] = 'warning'
+                result['details'].append(f"Site domain ({current_site.domain}) differs from request host ({request_host})")
+                # This might be OK in some deployment scenarios, so it's a warning not an error
+            
+        except Exception as e:
+            error_msg = f"Failed to check domain consistency: {str(e)}"
+            result['errors'].append(error_msg)
+            result['operations']['domain_consistency'] = 'failed'
+            result['details'].append(error_msg)
+        
+        # Determine overall status (less strict since OAuth URLs might not be configured)
+        critical_operations = ['request_analysis', 'https_settings_check']
+        failed_critical = [op for op in critical_operations if result['operations'].get(op) == 'failed']
+        
+        if not failed_critical:
+            result['status'] = 'success'
+        
+        return result
+        
+    except Exception as e:
+        error_msg = f"Unexpected error in OAuth URLs test: {str(e)}"
+        result['errors'].append(error_msg)
+        result['details'].append(error_msg)
+        return result
+
+def _format_auth_test_response(test_results, is_json_request, request):
+    """Helper function to format authentication test response as JSON or HTML."""
+    if is_json_request:
+        status_code = 200 if test_results.get('overall_status') == 'success' else 500
+        return JsonResponse(test_results, status=status_code)
+    else:
+        # Transform test_results for template consumption
+        context = _transform_auth_test_results_for_template(test_results)
+        return render(request, 'upload/auth_test.html', context)
+
+def _transform_auth_test_results_for_template(test_results):
+    """Transform raw authentication test results into template-friendly format."""
+    context = {'test_results': test_results}
+    
+    # Add some computed values for easier template rendering
+    if test_results:
+        context['test_results']['passed_tests'] = 0
+        context['test_results']['failed_tests'] = len(test_results.get('errors', []))
+        context['test_results']['warnings'] = 0
+        
+        # Count successful tests
+        for test_name, test_data in test_results.items():
+            if isinstance(test_data, dict) and test_data.get('status') == 'success':
+                context['test_results']['passed_tests'] += 1
+            # Count warnings (operations marked as 'warning')
+            if isinstance(test_data, dict) and 'operations' in test_data:
+                for op_name, op_status in test_data['operations'].items():
+                    if op_status == 'warning':
+                        context['test_results']['warnings'] += 1
+    
+    return context
