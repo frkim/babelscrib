@@ -27,15 +27,7 @@ else:
     print('Superuser already exists.')
 " || true
 
-# Ensure production site exists with correct domain
-echo "Setting up production site configuration..."
-echo "Step 1: Adding production site with exact domain..."
-python manage.py add_production_site --domain "${DOMAIN:-www.babelscrib.com}" --name "${SITE_NAME:-www.babelscrib.com}"
 
-echo "Step 2: Setting up Microsoft SocialApp for production..."
-python manage.py setup_production_site --domain "${DOMAIN:-www.babelscrib.com}" --name "${SITE_NAME:-BabelScrib}" --force-update
-
-echo "Production site configuration completed!"
 
 echo "Starting Gunicorn server..."
 exec "$@"

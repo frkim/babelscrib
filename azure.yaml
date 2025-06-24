@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: babelscrib
+metadata:
+  template: babelscrib@0.0.1-beta
+services:
+  babelscrib:
+    project: .
+    language: python
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: .
+      target: prod
+
+hooks:
+  predeploy:
+    shell: pwsh
+    run: |
+      Write-Host "Building and pushing container images..."
+      az acr build --registry $env:AZURE_CONTAINER_REGISTRY_ENDPOINT --image babelscrib:prod --file Dockerfile.prod .
+      az acr build --registry $env:AZURE_CONTAINER_REGISTRY_ENDPOINT --image babelscrib:latest --file Dockerfile .
+    continueOnError: false
+
+infra:
+  provider: bicep
+  path: infrastructure
+  parameters:
+    environmentName: prod
+    location: westeurope
+    microsoftClientId: ${AZURE_CLIENT_ID}
+    microsoftClientSecret: ${AZURE_CLIENT_SECRET}

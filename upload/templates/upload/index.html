@@ -105,8 +105,7 @@
                 padding: 8px;
             }
             /* Test Button mobile styles */
-            .header a[href*="test_azure_storage"],
-            .header a[href*="test_authentication_config"] {
+            .header a[href*="test_azure_storage"] {
                 font-size: 12px !important;
                 padding: 4px 8px !important;
                 margin-left: 5px;
@@ -171,13 +170,21 @@
             background-color: #fff3e0;
             border-color: #ffb74d;
         }
+        .file-row.xlsx {
+            background-color: #e8f5e8;
+            border-color: #81c784;
+        }
         .file-row.txt {
             background-color: #f3e5f5;
             border-color: #ba68c8;
         }
+        .file-row.csv {
+            background-color: #f3e5f5;
+            border-color: #ba68c8;
+        }
         .file-row.other {
-            background-color: #e8f5e8;
-            border-color: #81c784;
+            background-color: #f3e5f5;
+            border-color: #ba68c8;
         }
         .file-icon {
             margin-right: 10px;
@@ -636,38 +643,6 @@
                         <img src="{% static 'images/logo.png' %}" alt="BabelScrib Logo" data-i18n-attr="alt" data-i18n="babelscrib_logo">
                 </a>
             </div>            <div style="margin-left: auto; display: flex; align-items: center; gap: 25px;">
-                <!-- User Authentication Status -->
-                {% if user.is_authenticated %}
-                    <div style="display: flex; align-items: center; gap: 15px; color: #666; font-size: 14px;">
-                        <span style="display: flex; align-items: center; gap: 5px;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                            </svg>
-                            <span>{{ user.username|default:user.email }}</span>
-                        </span>
-                        <a href="{% url 'account_logout' %}" 
-                           style="color: #dc3545; text-decoration: none; font-size: 14px; padding: 5px 10px; border: 1px solid #dc3545; border-radius: 4px; transition: all 0.2s; flex-shrink: 0; white-space: nowrap; display: flex; align-items: center; gap: 5px;" 
-                           onmouseover="this.style.backgroundColor='#dc3545'; this.style.color='white'"
-                           onmouseout="this.style.backgroundColor='transparent'; this.style.color='#dc3545'"
-                           title="Sign out of your account" data-i18n-attr="title" data-i18n="sign_out_account">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.59L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
-                            </svg>
-                            <span data-i18n="disconnect">Disconnect</span>
-                        </a>
-                    </div>
-                {% else %}
-                    <a href="{% url 'account_login' %}" 
-                       style="color: #007cba; text-decoration: none; font-size: 14px; padding: 5px 10px; border: 1px solid #007cba; border-radius: 4px; transition: all 0.2s; flex-shrink: 0; white-space: nowrap; display: flex; align-items: center; gap: 5px;" 
-                       onmouseover="this.style.backgroundColor='#007cba'; this.style.color='white'"
-                       onmouseout="this.style.backgroundColor='transparent'; this.style.color='#007cba'"
-                       title="Sign in to your account" data-i18n-attr="title" data-i18n="sign_in_account">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M11 7L9.6 8.4l2.6 2.6H2v2h10.2l-2.6 2.6L11 17l5-5-5-5zm9 12h-8v2h8c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-8v2h8v14z"/>
-                        </svg>
-                        <span data-i18n="sign_in">Sign In</span>
-                    </a>
-                {% endif %}
                 
                 <!-- Language Selector --><div class="language-selector" style="flex-shrink: 0;">
                     <label for="language-select" data-i18n="language">Language:</label>                    <select id="language-select">
@@ -680,12 +655,6 @@
                    onmouseover="this.style.backgroundColor='#f0f0f0'; this.style.color='#333'"
                    onmouseout="this.style.backgroundColor='transparent'; this.style.color='#666'"
                    title="Test Azure Storage Configuration" data-i18n-attr="title" data-i18n="test_azure_storage_configuration">⚙️ <span data-i18n="storage_test">Storage Test</span></a>
-                
-                <!-- Authentication Test Link -->
-                <a href="{% url 'test_authentication_config' %}" style="color: #666; text-decoration: none; font-size: 14px; padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px; transition: all 0.2s; flex-shrink: 0; white-space: nowrap;" 
-                   onmouseover="this.style.backgroundColor='#f0f0f0'; this.style.color='#333'"
-                   onmouseout="this.style.backgroundColor='transparent'; this.style.color='#666'"
-                   title="Test Authentication Configuration" data-i18n-attr="title" data-i18n="test_authentication_configuration">🔐 <span data-i18n="auth_test">Auth Test</span></a>
             </div>
         </div>
           <!-- Page Title -->
@@ -712,26 +681,31 @@
                         <rect width="48" height="62" rx="8" fill="#FF7043"/>
                         <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">.pptx</text>
                     </svg>
+                    <!-- XLSX Icon -->
+                    <svg width="38" height="54" viewBox="0 0 48 62" fill="none">
+                        <rect width="48" height="62" rx="8" fill="#43A047"/>
+                        <text x="24" y="44" text-anchor="middle" font-size="12" font-family="Arial" fill="#fff" font-weight="bold">.xlsx</text>
+                    </svg>
                     <!-- TXT Icon -->
                     <svg width="38" height="54" viewBox="0 0 48 62" fill="none">
                         <rect width="48" height="62" rx="8" fill="#616161"/>
                         <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">.txt</text>
                     </svg>
-                    <!-- MD Icon -->
+                    <!-- Other Icon -->
                     <svg width="38" height="54" viewBox="0 0 48 62" fill="none">
-                        <rect width="48" height="62" rx="8" fill="#43A047"/>
+                        <rect width="48" height="62" rx="8" fill="#9C27B0"/>
                         <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">...</text>
                     </svg>                </div>
                 <p data-i18n="click_here_to_select">Click here to select Documents button or drag and drop your files here</p>
-                <p><small data-i18n="supported_formats">Supported formats: pdf, doc, docx, txt, pptx, md</small></p>
+                <p><small data-i18n="supported_formats">Supported formats: pdf, docx, pptx, xlsx, txt, csv, md, etc.</small></p>
                 <p><small data-i18n="document_size_limit">Document size limit: ≤ 40MB per file • Up to 1000 files per batch • Total batch size ≤ 250MB</small></p>
                 <p><small><a id="azure-ai-limits-link" href="https://learn.microsoft.com/en-us/azure/ai-services/translator/service-limits#asynchronous-batch-operation-limits" target="_blank" style="color: #007cba; text-decoration: none;"><span data-i18n="view_azure_limits">View all Azure AI Translator limits</span> →</a></small></p>
                 <div style="text-align: center; margin-top: 15px;">
                     <button type="button" class="btn" id="select-file-button" style="display: inline-block;" data-i18n="select_documents">Select Documents</button>
                 </div>
             </div>
-            <input type="file" id="file-input" name="file" accept=".pdf,.doc,.docx,.txt,.pptx,.md" multiple style="display: none;">            <div class="button-container">                <div class="email-container">
-                    <input type="email" id="email-input" name="email" class="email-input" placeholder="Your email" data-i18n-attr="placeholder" data-i18n="your_email" value="{{ user.email|default:'' }}" required>
+            <input type="file" id="file-input" name="file" accept=".pdf,.doc,.docx,.pptx,.xlsx,.txt,.csv,.md" multiple style="display: none;">            <div class="button-container">                <div class="email-container">
+                    <input type="email" id="email-input" name="email" class="email-input" placeholder="Your email" data-i18n-attr="placeholder" data-i18n="your_email" required>
                     <div id="email-error" class="email-error"></div>
                 </div>
                 <div class="buttons-group">
@@ -781,26 +755,6 @@
     document.addEventListener('DOMContentLoaded', function() {
         // Initialize internationalization
         BabelScribI18n.initI18n();
-          // If email is pre-filled from authentication, trigger validation and save to cookie
-        const emailInput = document.getElementById('email-input');
-        if (emailInput && emailInput.value.trim()) {
-            // Small delay to ensure upload.js has initialized
-            setTimeout(function() {
-                // Save the authenticated user's email to cookie for future use
-                const userEmail = emailInput.value.trim();
-                if (typeof setCookie === 'function' && userEmail) {
-                    setCookie('userEmail', userEmail, 30);
-                }
-                
-                // Trigger validation to enable upload button
-                if (typeof validateEmailAndUpdateButton === 'function') {
-                    validateEmailAndUpdateButton();
-                } else {
-                    // Fallback: trigger input event to activate validation
-                    emailInput.dispatchEvent(new Event('input'));
-                }
-            }, 100);
-        }
         
         // Prevent file dialog when clicking the Azure AI Translator limits link
         var link = document.getElementById('azure-ai-limits-link');

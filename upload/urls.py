@@ -12,9 +12,4 @@ urlpatterns = [
     path('ready/', views.readiness_check, name='readiness_check'),
     # Test endpoints
     path('test-azure-storage/', views.test_azure_storage, name='test_azure_storage'),
-    path('test-authentication/', views.test_authentication_config, name='test_authentication_config'),
-    # Microsoft authentication test
-    path('test-microsoft/', views.test_microsoft, name='test_microsoft'),
-    # Debug OAuth URLs (only for troubleshooting)
-    path('debug-oauth/', views.debug_oauth_urls, name='debug_oauth_urls'),
 ]

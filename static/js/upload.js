@@ -334,7 +334,10 @@ document.addEventListener('DOMContentLoaded', function() {
             case 'docx': return 'docx';
             case 'ppt':
             case 'pptx': return 'pptx';
+            case 'xls':
+            case 'xlsx': return 'xlsx';
             case 'txt': return 'txt';
+            case 'csv': return 'csv';
             default: return 'other';
         }
     }
@@ -358,19 +361,30 @@ document.addEventListener('DOMContentLoaded', function() {
                     <rect width="48" height="62" rx="8" fill="#FF7043"/>
                     <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">.pptx</text>
                 </svg>`;
+            case 'xls':
+            case 'xlsx':
+                return `<svg width="24" height="32" viewBox="0 0 48 62" fill="none">
+                    <rect width="48" height="62" rx="8" fill="#43A047"/>
+                    <text x="24" y="44" text-anchor="middle" font-size="12" font-family="Arial" fill="#fff" font-weight="bold">.xlsx</text>
+                </svg>`;
             case 'txt':
                 return `<svg width="24" height="32" viewBox="0 0 48 62" fill="none">
                     <rect width="48" height="62" rx="8" fill="#616161"/>
                     <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">.txt</text>
                 </svg>`;
+            case 'csv':
+                return `<svg width="24" height="32" viewBox="0 0 48 62" fill="none">
+                    <rect width="48" height="62" rx="8" fill="#9C27B0"/>
+                    <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">.csv</text>
+                </svg>`;
             case 'md':
                 return `<svg width="24" height="32" viewBox="0 0 48 62" fill="none">
-                    <rect width="48" height="62" rx="8" fill="#43A047"/>
+                    <rect width="48" height="62" rx="8" fill="#9C27B0"/>
                     <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">.md</text>
                 </svg>`;
             default:
                 return `<svg width="24" height="32" viewBox="0 0 48 62" fill="none">
-                    <rect width="48" height="62" rx="8" fill="#43A047"/>
+                    <rect width="48" height="62" rx="8" fill="#9C27B0"/>
                     <text x="24" y="44" text-anchor="middle" font-size="14" font-family="Arial" fill="#fff" font-weight="bold">...</text>
                 </svg>`;
         }

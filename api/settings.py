@@ -59,24 +59,16 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.sites',  # Required for allauth
-    'allauth',
-    'allauth.account',
-    'allauth.socialaccount',
-    'allauth.socialaccount.providers.microsoft',
     'upload',  # Your upload app
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'upload.middleware.ForceHttpsMiddleware',  # Custom middleware to force HTTPS detection in Azure
-    'whitenoise.middleware.WhiteNoiseMiddleware',  # Add WhiteNoise for static files
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.locale.LocaleMiddleware',  # Add locale middleware for i18n
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Add WhiteNoise for static files
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'allauth.account.middleware.AccountMiddleware',  # Required for allauth
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -95,7 +87,6 @@ TEMPLATES = [
             'context_processors': [
                 'django.template.context_processors.debug',
                 'django.template.context_processors.request',
-                'django.template.context_processors.i18n',  # Add i18n context processor
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
             ],
@@ -113,37 +104,13 @@ DATABASES = {
     }
 }
 
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
-]
+# Removed authentication validators and Azure Auth configuration
 
 LANGUAGE_CODE = 'en'  # English as default
 TIME_ZONE = 'UTC'
-USE_I18N = False  # Temporarily disable i18n while we fix .mo files
+USE_I18N = False  # Disabled - using client-side i18n instead
 USE_L10N = True
 USE_TZ = True
-
-# Internationalization settings
-LANGUAGES = [
-    ('en', 'English'),
-    ('fr', 'Français'),
-]
-
-# Path where Django will look for translation files
-LOCALE_PATHS = [
-    BASE_DIR / 'locale',
-]
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
@@ -159,55 +126,19 @@ AZURE_TRANSLATION_ENDPOINT = env('AZURE_TRANSLATION_ENDPOINT', default='')
 AZURE_TRANSLATION_SOURCE_URI = env('AZURE_TRANSLATION_SOURCE_URI', default='')
 AZURE_TRANSLATION_TARGET_URI = env('AZURE_TRANSLATION_TARGET_URI', default='')
 
-# Microsoft Authentication settings
-SITE_ID = env.int('SITE_ID', default=1)
-
-# In production, use the production site (Site ID 2) if not explicitly set
-if not DEBUG and env.int('SITE_ID', default=None) is None:
-    SITE_ID = 2  # Production site with www.babelscrib.com domain
-
-# Microsoft OAuth settings from environment variables
-MICROSOFT_CLIENT_ID = env('MICROSOFT_CLIENT_ID', default='')
-MICROSOFT_CLIENT_SECRET = env('MICROSOFT_CLIENT_SECRET', default='')
-
-# Validate Microsoft configuration in production
-if not DEBUG:
-    if not MICROSOFT_CLIENT_ID:
-        raise ValueError("MICROSOFT_CLIENT_ID environment variable must be set in production")
-    if not MICROSOFT_CLIENT_SECRET:
-        raise ValueError("MICROSOFT_CLIENT_SECRET environment variable must be set in production")
+# Removed Azure Authentication settings
 
 # Force HTTPS for OAuth redirects in production or when explicitly enabled
 if not DEBUG or env.bool('FORCE_HTTPS_DETECTION', default=False):
-    # This ensures that allauth generates HTTPS URLs for OAuth redirects
-    ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https'
-    # Additional setting to force HTTPS scheme detection
-    os.environ['HTTPS'] = 'on'
     # Force HTTPS for all cookie and session security
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    # Ensure request.is_secure() returns True when behind a proxy
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    # Additional setting to force HTTPS scheme detection
+    os.environ['HTTPS'] = 'on'
 else:
-    ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'http'
-
-# Authentication backends
-AUTHENTICATION_BACKENDS = [
-    'django.contrib.auth.backends.ModelBackend',
-    'allauth.account.auth_backends.AuthenticationBackend',
-]
-
-# Microsoft OAuth settings - Using database SocialApp instead of settings
-# SOCIALACCOUNT_PROVIDERS configuration removed to avoid conflicts with SocialApp
-
-# Allauth settings
-LOGIN_URL = '/accounts/login/'
-LOGIN_REDIRECT_URL = '/'
-LOGOUT_REDIRECT_URL = '/accounts/login/'
-ACCOUNT_LOGOUT_ON_GET = True
-ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']
-ACCOUNT_EMAIL_VERIFICATION = 'none'
-SOCIALACCOUNT_AUTO_SIGNUP = True
+    # Development settings
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
 
 # Logging configuration
 LOGGING = {
@@ -236,7 +167,7 @@ LOGGING = {
     },
     'root': {
         'handlers': ['console', 'file'],
-        'level': 'INFO',
+        'level': 'DEBUG',
     },
     'loggers': {
         'django': {

@@ -2,27 +2,27 @@
 
 ## Overview
 
-The BabelScrib application now includes an integrated document translation feature that allows users to translate uploaded documents using Azure Cognitive Services Document Translation API.
+The BabelScrib application provides an integrated document translation feature that allows anonymous users to translate uploaded documents using Azure Cognitive Services Document Translation API. The application operates without authentication and all files are accessible to all users.
 
 ## How It Works
 
-1. **Upload Documents**: Users upload their documents through the existing upload interface
+1. **Upload Documents**: Users upload their documents through the upload interface (no email required)
 2. **Upload Complete**: When uploads are successful, a "Launch Translation Process" button appears
 3. **Select Languages**: Users can choose source and target languages for translation
-4. **Start Translation**: Click the button to initiate the translation process
+4. **Start Translation**: Click the button to initiate the translation process for all uploaded documents
 5. **View Results**: Translation status and results are displayed in real-time
 
 ## User Interface
 
 ### Upload Interface
 - Drag and drop or select files (PDF, DOCX, PPTX, TXT, MD)
-- Enter email address
+- No email address required (authentication removed)
 - Upload files to Azure Storage
 
 ### Translation Controls (appears after successful upload)
 - **Target Language Dropdown**: Select the language to translate to
 - **Source Language Dropdown**: Specify source language or use auto-detect
-- **Launch Translation Process Button**: Starts the translation
+- **Launch Translation Process Button**: Starts the translation for all documents
 - **Translation Status**: Shows progress and results
 
 ### Supported Languages
@@ -69,14 +69,13 @@ The BabelScrib application now includes an integrated document translation featu
 ### API Endpoints
 
 #### POST /translate/
-Initiates document translation process.
+Initiates document translation process for all uploaded documents.
 
 **Request Body:**
 ```json
 {
     "target_language": "en",
-    "source_language": "es",  // optional
-    "email": "user@example.com"
+    "source_language": "es"  // optional
 }
 ```
 

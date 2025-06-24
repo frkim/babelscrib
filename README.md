@@ -1,7 +1,11 @@
 # BabelScrib
-Document Translation Web Application
+Anonymous Document Translation Web Application
 
-BabelScrib is a Django-based web application that allows users to upload documents and translate them using Azure AI Document Translation services. The application provides a user-friendly interface for file uploads with drag-and-drop functionality and secure document translation powered by Azure Cognitive Services.
+BabelScrib is a Django-based web application that allows anonymous users to upload documents and translate them using Azure AI Document Translation services. The application provides a user-friendly interface for file uploads with drag-and-drop functionality and document translation powered by Azure Cognitive Services.
+
+## ⚠️ Important: Anonymous Access
+
+**BabelScrib operates without authentication** - all uploaded files are accessible to all users. This is a public file sharing and translation service suitable for non-sensitive documents.
 
 ## Quick Start
 
@@ -21,18 +25,18 @@ For a rapid deployment experience:
    docker run -p 8000:8000 --env-file .env babelscrib
    ```
 
-3. **Access**: Open `http://localhost:8000/upload/`
+3. **Access**: Open `http://localhost:8000/`
 
 For detailed setup instructions, see the [Setup Instructions](#setup-instructions) section below.
 
 ## Features
 
-- **Document Upload**: Upload documents to Azure Blob Storage with drag-and-drop interface
+- **Anonymous Document Upload**: Upload documents to Azure Blob Storage with drag-and-drop interface (no registration required)
 - **Document Translation**: Translate documents using Azure AI Document Translation services
-- **User Isolation**: Secure user session management with email-based identification
+- **Public File Access**: All users can access all uploaded files
 - **Multiple File Formats**: Support for various document formats (PDF, DOCX, PPTX, etc.)
 - **Docker Support**: Full containerization for development and production deployments
-- **Production Ready**: Configured with security best practices and production settings
+- **Production Ready**: Configured with security best practices for anonymous access
 
 ## Project Structure
 
@@ -49,11 +53,11 @@ babelscrib/
 │   ├── __init__.py
 │   ├── admin.py
 │   ├── apps.py
-│   ├── models.py           # Document and UserSession models
+│   ├── models.py           # Document model (simplified)
 │   ├── serializers.py      # DRF serializers
 │   ├── views.py            # API endpoints and views
 │   ├── urls.py
-│   ├── user_utils.py       # User management utilities
+│   ├── middleware.py       # HTTPS middleware
 │   ├── templates/
 │   │   └── upload/
 │   │       └── index.html  # Upload interface
@@ -119,9 +123,13 @@ babelscrib/
    
    Edit the `.env` file with your Azure credentials:
    ```env
+   # Django Configuration
+   DEBUG=True
+   SECRET_KEY=your-secret-key-here
+   
    # Azure Translation Service Configuration
    AZURE_TRANSLATION_KEY=your_azure_translation_key_here
-   AZURE_TRANSLATION_ENDPOINT=https://babelscrib.cognitiveservices.azure.com
+   AZURE_TRANSLATION_ENDPOINT=https://your-translator.cognitiveservices.azure.com
    
    # Azure Storage Configuration
    AZURE_STORAGE_CONNECTION_STRING=your_azure_storage_connection_string_here
@@ -129,8 +137,8 @@ babelscrib/
    AZURE_STORAGE_CONTAINER_NAME_TARGET=target
    
    # Azure Blob Storage URIs (for translation service)
-   AZURE_TRANSLATION_SOURCE_URI=https://babelscribdocs.blob.core.windows.net/source
-   AZURE_TRANSLATION_TARGET_URI=https://babelscribdocs.blob.core.windows.net/target
+   AZURE_TRANSLATION_SOURCE_URI=https://yourstorageaccount.blob.core.windows.net/source
+   AZURE_TRANSLATION_TARGET_URI=https://yourstorageaccount.blob.core.windows.net/target
    ```
 
 5. **Run Database Migrations**
@@ -138,8 +146,10 @@ babelscrib/
    python manage.py migrate
    ```
 
-6. **Create a Superuser (Optional)**
+6. **Create a Superuser (Optional - Not Required)**
    ```bash
+   # Note: Admin interface is not available since authentication was removed
+   # This step can be skipped
    python manage.py createsuperuser
    ```
 
@@ -147,6 +157,8 @@ babelscrib/
    ```bash
    python manage.py runserver
    ```
+
+   The application will be available at `http://127.0.0.1:8000/`
 
 ### Docker Development Setup
 
@@ -208,30 +220,32 @@ babelscrib/
 ## Usage
 
 1. **Access the Application**
-   - Navigate to `http://127.0.0.1:8000/upload/` in your web browser
-   - Enter your email address to create a session
+   - Navigate to `http://127.0.0.1:8000/` in your web browser
+   - No registration or email required - completely anonymous
 
 2. **Upload Documents**
    - Use the drag-and-drop interface or click to select files
    - Supported formats: PDF, DOCX, PPTX, TXT, and more
-   - Files are securely uploaded to Azure Blob Storage
+   - Files are uploaded to Azure Blob Storage and accessible to all users
 
 3. **Translate Documents**
-   - Select uploaded documents from your list
+   - Click "Launch Translation Process" after uploading files
    - Choose target language for translation
-   - Azure AI will process and translate your documents
+   - Azure AI will process and translate all uploaded documents
 
 4. **Download Results**
    - Access translated documents from the interface
-   - Original and translated files are preserved separately
+   - All users can download any uploaded or translated files
+   - Translated files are automatically deleted after download
 
 ## API Endpoints
 
-- `GET /upload/` - Main upload interface
-- `POST /upload/api/upload/` - Upload document endpoint
-- `GET /upload/api/documents/` - List user documents
-- `POST /upload/api/translate/` - Translate document endpoint
-- `GET /upload/api/download/<id>/` - Download document
+- `GET /` - Main upload interface
+- `POST /upload/` - Upload document endpoint
+- `GET /list-files/` - List all uploaded documents (global)
+- `POST /translate/` - Translate all documents endpoint
+- `GET /download/<filename>/` - Download any document
+- `GET /test-storage/` - Storage configuration test endpoint
 
 ## CI/CD and Deployment
 
@@ -256,22 +270,20 @@ The `infrastructure/` folder contains Azure Bicep templates for:
 
 ## Architecture
 
-The application uses a multi-tier architecture:
+The application uses a simplified architecture for anonymous access:
 
 - **Frontend**: Django templates with JavaScript for upload interface
-- **Backend**: Django REST framework for API endpoints
-- **Storage**: Azure Blob Storage for document persistence
+- **Backend**: Django with simplified views for anonymous access
+- **Storage**: Azure Blob Storage for document persistence (public access)
 - **Translation**: Azure AI Document Translation services
-- **Database**: SQLite (development) / PostgreSQL (production)
-- **Security**: User isolation through email-based sessions
+- **Database**: SQLite (development) / PostgreSQL (production) - simplified schema
 - **Infrastructure**: Azure Container Apps with managed scaling
 - **Monitoring**: Azure Log Analytics and Application Insights
 
 ## Key Dependencies
-- **Django REST Framework**: API development
+- **Django**: Web framework
 - **Azure Storage Blob**: Document storage
 - **Azure AI Translation**: Document translation services
-- **Azure Identity**: Authentication for Azure services
 - **Gunicorn**: Production WSGI server
 - **WhiteNoise**: Static file serving
 
@@ -304,23 +316,28 @@ The project includes VS Code tasks for common operations:
 
 ## Security Features
 
-- **User Isolation**: Documents are isolated by user email sessions
-- **Secure File Handling**: Files are validated and securely stored
+⚠️ **Important Security Notice**: BabelScrib operates without user authentication
+
+- **Anonymous Access**: All files are accessible to all users
+- **No User Isolation**: Files are not isolated between users
+- **Public File Sharing**: Suitable for non-sensitive documents only
 - **Environment Variables**: Sensitive configuration stored in environment variables
 - **Production Settings**: Separate configuration for production deployment
-- **CSRF Protection**: Built-in Django CSRF protection
+- **CSRF Protection**: Built-in Django CSRF protection for forms
 - **Static File Security**: WhiteNoise for secure static file serving
+- **Rate Limiting**: Recommended for production to prevent abuse
 
 ## Documentation
 
 Additional documentation is available in the `documentation/` folder:
 
-- `IMPLEMENTATION_SUMMARY.md`: Technical implementation details
+- `README.md`: Complete system overview and architecture
+- `IMPLEMENTATION_SUMMARY.md`: Authentication removal process details
 - `TRANSLATION_FEATURE.md`: Translation service documentation
-- `USER_ISOLATION_SECURITY.md`: Security implementation details
-- `PRODUCTION_SECURITY.md`: Production security guidelines
+- `PRODUCTION_SECURITY.md`: Security considerations for anonymous access
 - `AZURE_REGISTRY_COMMANDS.md`: Azure deployment commands
 - `DOCKER_SCRIPTS_README.md`: Docker usage instructions
+- `AZURE_STORAGE_TROUBLESHOOTING.md`: Storage troubleshooting guide
 
 ## Contributing
 
@@ -342,16 +359,16 @@ Additional documentation is available in the `documentation/` folder:
 2. **File Upload Failures**: 
    - Check Azure Blob Storage permissions and container existence
    - Verify `AZURE_STORAGE_CONNECTION_STRING` is correct
-   - Ensure source and target containers are created
+   - Ensure source and target containers are created in Azure Storage
 
 3. **Translation Errors**: 
-   - Ensure Azure Cognitive Services is properly configured
-   - Verify your translation endpoint and key
-   - Check that the target language is supported
+   - Ensure Azure Cognitive Services Translator is properly configured
+   - Verify your translation endpoint and key are correct
+   - Check that the target language is supported by Azure Translator
 
 4. **Static Files Not Loading**: 
    - Run `python manage.py collectstatic` for production
-   - Check that `whitenoise` is configured correctly
+   - Check that `whitenoise` is configured correctly in Django settings
 
 5. **Docker Issues**:
    - Ensure Docker is running and accessible

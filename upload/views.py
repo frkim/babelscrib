@@ -1,7 +1,6 @@
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse, Http404
 from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.decorators import login_required
 from azure.storage.blob import BlobServiceClient
 from azure.core.exceptions import ResourceExistsError, AzureError, ResourceNotFoundError
 import os
@@ -15,14 +14,8 @@ from django.utils import timezone
 import json
 import urllib.parse
 import mimetypes
-# User isolation imports
+# Document model import
 from .models import Document
-from .user_utils import UserIsolationService, require_user_session
-
-# Debug imports for OAuth URL testing
-from django.contrib.sites.models import Site
-from django.urls import reverse
-from allauth.socialaccount.models import SocialApp
 
 logger = logging.getLogger(__name__)
 
@@ -157,27 +150,13 @@ def readiness_check(request):
             'error': str(e)        }, status=503)
 
 @csrf_exempt
-@login_required
 def upload_file(request):
     if request.method == 'POST':
         # Handle both single file and multiple files
         files = request.FILES.getlist('file') if 'file' in request.FILES else []
-        email = request.POST.get('email', '').strip()
         
         if not files:
             return JsonResponse({'error': 'No files provided'}, status=400)
-        
-        if not email:
-            return JsonResponse({'error': 'Email address is required'}, status=400)
-        
-        # Basic email validation
-        import re
-        email_regex = r'^[^\s@]+@[^\s@]+\.[^\s@]+$'
-        if not re.match(email_regex, email):
-            return JsonResponse({'error': 'Invalid email address'}, status=400)
-        
-        # Create or update user session
-        session_key = UserIsolationService.get_or_create_session(request, email)
         
         # For now, handle one file at a time (the frontend will call this endpoint multiple times)
         file = files[0] if files else None
@@ -185,7 +164,7 @@ def upload_file(request):
         if not file:
             return JsonResponse({'error': 'No file provided'}, status=400)
         
-        logger.info(f"Upload request from email: {email} for file: {file.name}")
+        logger.info(f"Upload request for file: {file.name}")
         
         try:
             # Get connection string from environment
@@ -218,29 +197,28 @@ def upload_file(request):
                 logger.error(f"Error creating container: {str(e)}")
                 return JsonResponse({'error': 'Failed to create storage container'}, status=500)
             
-            # Create user-specific blob name to ensure isolation
-            user_blob_name = UserIsolationService.create_user_blob_name(email, file.name)
+            # Create simple blob name (without user isolation)
+            import uuid
+            unique_id = str(uuid.uuid4())[:8]
+            blob_name = f"{unique_id}_{file.name}"
             
-            # Get blob client and upload file with user-specific name
-            blob_client = blob_service_client.get_blob_client(container=container_name, blob=user_blob_name)
+            # Get blob client and upload file
+            blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
             blob_client.upload_blob(file, overwrite=True)
             
             # Save document record in database
             document = Document(
                 title=file.name,
-                user_email=email,
-                blob_name=file.name,
-                user_blob_name=user_blob_name
+                blob_name=blob_name
             )
             document.save()
             
-            logger.info(f"Successfully uploaded file: {file.name} as {user_blob_name} for email: {email}")
+            logger.info(f"Successfully uploaded file: {file.name} as {blob_name}")
             return JsonResponse({
                 'message': 'File uploaded successfully',
                 'filename': file.name,
                 'container': container_name,
-                'email': email,
-                'session_key': session_key
+                'blob_name': blob_name
             })
             
         except AzureError as e:
@@ -252,15 +230,11 @@ def upload_file(request):
 
     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
-@login_required
 def index(request):
-    context = {
-        'user_email': request.user.email,
-    }
+    context = {}
     return render(request, 'upload/index.html', context)
 
 @csrf_exempt
-@require_user_session
 def translate_documents(request):
     """Handle document translation requests."""
     if request.method == 'POST':
@@ -268,21 +242,17 @@ def translate_documents(request):
             data = json.loads(request.body)
             target_language = data.get('target_language', 'en')
             source_language = data.get('source_language')  # Optional
-            email = getattr(request, 'user_email', '')  # From decorator
             clear_target = data.get('clear_target', True)  # Default to True for automatic cleanup
             # Source cleanup is now always enabled automatically
             cleanup_source = True  # Always clean up source files automatically
             
-            if not email:
-                return JsonResponse({'error': 'User session required'}, status=401)
-            
-            logger.info(f"Translation request from email: {email} to language: {target_language}")
+            logger.info(f"Translation request to language: {target_language}")
             if clear_target:
                 logger.info("Target container will be cleared before translation")
             logger.info("Source files will be automatically cleaned up after translation")
             
-            # Get user's documents
-            user_documents = UserIsolationService.get_user_documents(request)
+            # Get all documents (since no user isolation)
+            user_documents = Document.objects.all()
             if not user_documents:
                 return JsonResponse({'error': 'No documents found for translation'}, status=400)
             
@@ -296,79 +266,27 @@ def translate_documents(request):
                     'error': f'Translation service configuration error: {str(config_error)}'
                 }, status=500)
             
-            # For user isolation, we need to create temporary containers or use a different approach
-            # Since Azure Document Translation translates entire containers, we'll copy user files
-            # to temporary containers for translation
-            user_id_hash = UserIsolationService.generate_user_id_hash(email)
-            
-            # Create temporary container names for this translation session
-            import uuid
-            session_id = str(uuid.uuid4())[:8]
-            temp_source_container = f"temp-source-{user_id_hash}-{session_id}"
-            temp_target_container = f"temp-target-{user_id_hash}-{session_id}"
-            
-            # Get the base storage account URL from the config
-            import urllib.parse
-            source_uri_parts = urllib.parse.urlparse(config.source_uri)
-            base_url = f"{source_uri_parts.scheme}://{source_uri_parts.netloc}"
-            
-            temp_source_uri = f"{base_url}/{temp_source_container}"
-            temp_target_uri = f"{base_url}/{temp_target_container}"
-            
-            # Use the translation service with temporary containers
-            result = translation_service.translate_user_documents_with_temp_containers(
-                original_source_uri=config.source_uri,
-                original_target_uri=config.target_uri,
-                temp_source_uri=temp_source_uri,
-                temp_target_uri=temp_target_uri,
+            # Use the translation service directly with main containers
+            result = translation_service.translate_documents_default(
                 target_language=target_language,
                 source_language=source_language,
-                user_id_hash=user_id_hash,
+                clear_target=clear_target,
                 cleanup_source=cleanup_source
             )
             
-            logger.info(f"Translation completed for {email}. Status: {result['status']}")
-            
-            # Include cleanup information in the response
-            cleanup_message = ""
-            
-            # Old target files cleanup information
-            old_target_cleanup = result.get('old_target_cleanup', {})
-            if old_target_cleanup.get('cleanup_attempted'):
-                old_files_cleaned = old_target_cleanup.get('cleaned_files', 0)
-                old_files_found = old_target_cleanup.get('old_files_found', 0)
-                old_files_failed = old_target_cleanup.get('failed_cleanups', 0)
-                hours_threshold = old_target_cleanup.get('hours_threshold', 24)
-                
-                if old_files_found > 0:
-                    cleanup_message += f" {old_files_cleaned} old target files (older than {hours_threshold}h) were removed."
-                    if old_files_failed > 0:
-                        cleanup_message += f" {old_files_failed} old target files failed to be removed."
-                else:
-                    cleanup_message += " No old target files found."
-            
-            # Source files cleanup information
-            source_cleanup = result.get('source_cleanup', {})
-            if source_cleanup.get('cleanup_attempted'):
-                cleaned_count = source_cleanup.get('cleaned_files', 0)
-                failed_count = source_cleanup.get('failed_cleanups', 0)
-                if cleaned_count > 0:
-                    cleanup_message += f" {cleaned_count} source files were cleaned up."
-                if failed_count > 0:
-                    cleanup_message += f" {failed_count} source files failed to be cleaned up."
+            logger.info(f"Translation completed. Status: {result['status']}")
             
             return JsonResponse({
                 'success': True,
                 'data': result,
-                'message': f"Translation started successfully. Status: {result['status']}.{cleanup_message}"
+                'message': f"Translation started successfully. Status: {result['status']}"
             })
             
         except json.JSONDecodeError:
             return JsonResponse({'error': 'Invalid JSON payload'}, status=400)
         except Exception as e:
             error_message = str(e)
-            email = getattr(request, 'user_email', 'unknown')
-            logger.error(f'Translation error for {email}: {error_message}')
+            logger.error(f'Translation error: {error_message}')
             
             # Provide more user-friendly error messages
             if "TargetFileAlreadyExists" in error_message:
@@ -383,110 +301,47 @@ def translate_documents(request):
     
     return JsonResponse({'error': 'Invalid request method'}, status=405)
 
-@require_user_session
 def download_file(request, filename):
-    """Download a translated file from Azure Blob Storage with user isolation."""
+    """Download a translated file from Azure Blob Storage."""
     try:
-        email = getattr(request, 'user_email', '')
-        
-        # Validate that the user can access this file
-        if not UserIsolationService.validate_file_access(request, filename):
-            logger.warning(f"Unauthorized file access attempt: {email} tried to access {filename}")
-            raise Http404("File not found or access denied")
-        
         # Get connection string from environment
         connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
         if not connection_string:
             logger.error("Azure Storage connection string not found")
             raise Http404("Storage configuration missing")
         
-        # Debug and fix connection string if needed
-        fixed_connection_string = debug_connection_string(connection_string)
-        if not fixed_connection_string:
-            logger.error("Invalid Azure Storage connection string format")
-            raise Http404("Storage configuration invalid")
+        # Create blob service client
+        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
         
-        # Initialize blob service client
-        blob_service_client = BlobServiceClient.from_connection_string(fixed_connection_string)
-        
-        # Get target container name (where translated files are stored)
-        container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME_TARGET', 'target')
+        # Try to find the file in target container
+        target_container = os.getenv('AZURE_STORAGE_CONTAINER_NAME_TARGET', 'target')
         
         try:
-            # Create user-specific blob name
-            user_id_hash = UserIsolationService.generate_user_id_hash(email)
-            user_blob_name = f"{user_id_hash}/{filename}"
-            
-            # Get blob client for the translated file
-            blob_client = blob_service_client.get_blob_client(container=container_name, blob=user_blob_name)
-            
-            # Check if blob exists
-            if not blob_client.exists():
-                logger.warning(f"File not found: {user_blob_name} in container: {container_name} for user: {email}")
-                raise Http404("File not found")
-            
-            # Download the blob data
+            blob_client = blob_service_client.get_blob_client(container=target_container, blob=filename)
             blob_data = blob_client.download_blob()
-            file_content = blob_data.readall()
             
-            # Get blob properties for content type
-            blob_properties = blob_client.get_blob_properties()
-            content_type = blob_properties.content_settings.content_type
+            # Create HTTP response with file data
+            response = HttpResponse(blob_data.readall(), content_type='application/octet-stream')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
             
-            # If content type is not set, try to guess from filename
-            if not content_type:
-                content_type, _ = mimetypes.guess_type(filename)
-                if not content_type:
-                    content_type = 'application/octet-stream'
-            
-            # Create HTTP response with file content
-            response = HttpResponse(file_content, content_type=content_type)
-            
-            # Set download headers
-            safe_filename = urllib.parse.quote(filename)
-            response['Content-Disposition'] = f'attachment; filename="{filename}"; filename*=UTF-8\'\'{safe_filename}'
-            response['Content-Length'] = len(file_content)
-            
-            # Clean up the translated file after successful download
-            try:
-                blob_client.delete_blob()
-                logger.info(f"Successfully deleted translated file after download: {user_blob_name} for user: {email}")
-                
-                # Also update database record
-                Document.objects.filter(
-                    user_email=email,
-                    user_blob_name__endswith=filename,
-                    is_translated=True
-                ).delete()
-                
-            except ResourceNotFoundError:
-                # File was already deleted, this is not an error
-                logger.info(f"Translated file {user_blob_name} was already deleted")
-            except Exception as cleanup_error:
-                # Log the cleanup error but don't fail the download
-                logger.warning(f"Failed to delete translated file {user_blob_name} after download: {str(cleanup_error)}")
-                # Continue with the download response despite cleanup failure
-            
-            logger.info(f"Successfully served file: {filename} to user: {email}")
+            logger.info(f"Successfully downloaded file: {filename}")
             return response
             
         except ResourceNotFoundError:
-            logger.warning(f"Blob not found: {user_blob_name} in container: {container_name} for user: {email}")
+            logger.warning(f"File not found: {filename}")
             raise Http404("File not found")
         except Exception as e:
-            logger.error(f"Error downloading file {filename} for user {email}: {str(e)}")
-            raise Http404("Error downloading file")
+            logger.error(f"Error downloading file {filename}: {str(e)}")
+            raise Http404("Download failed")
             
     except Exception as e:
-        logger.error(f"Unexpected error in download_file: {str(e)}")
+        logger.error(f"Download error for {filename}: {str(e)}")
         raise Http404("Download failed")
 
-@require_user_session
 def list_user_files(request):
-    """List all files belonging to the current user."""
+    """List all files."""
     try:
-        email = getattr(request, 'user_email', '')
-        user_documents = UserIsolationService.get_user_documents(request)
+        user_documents = Document.objects.all()
         
         files_data = []
         for doc in user_documents:
@@ -506,7 +361,7 @@ def list_user_files(request):
         })
         
     except Exception as e:
-        logger.error(f"Error listing files for user: {str(e)}")
+        logger.error(f"Error listing files: {str(e)}")
         return JsonResponse({'error': 'Failed to list files'}, status=500)
 
 def test_azure_storage(request):
@@ -983,711 +838,4 @@ def test_translation_service_config():
         error_msg = f"Unexpected error in translation service test: {str(e)}"
         result['errors'].append(error_msg)
         result['details'].append(error_msg)
-        return result
-
-def test_microsoft(request):
-    """Test view for Microsoft authentication"""
-    from django.utils import timezone
-    return render(request, 'basic_test.html', {
-        'current_time': timezone.now()
-    })
-
-@login_required
-def debug_oauth_urls(request):
-    """Debug view to check OAuth URL generation and HTTPS settings"""
-    debug_info = {
-        'request_info': {
-            'is_secure': request.is_secure(),
-            'scheme': request.scheme,
-            'host': request.get_host(),
-            'full_url': request.build_absolute_uri(),
-            'headers': dict(request.headers),
-        },
-        'django_settings': {
-            'DEBUG': settings.DEBUG,
-            'SECURE_SSL_REDIRECT': getattr(settings, 'SECURE_SSL_REDIRECT', 'Not set'),
-            'SECURE_PROXY_SSL_HEADER': getattr(settings, 'SECURE_PROXY_SSL_HEADER', 'Not set'),
-            'ACCOUNT_DEFAULT_HTTP_PROTOCOL': getattr(settings, 'ACCOUNT_DEFAULT_HTTP_PROTOCOL', 'Not set'),
-            'USE_X_FORWARDED_HOST': getattr(settings, 'USE_X_FORWARDED_HOST', 'Not set'),
-            'USE_X_FORWARDED_PORT': getattr(settings, 'USE_X_FORWARDED_PORT', 'Not set'),
-        },
-        'site_info': {},
-        'oauth_urls': {},
-        'social_app_info': {}
-    }
-    
-    # Get current site info
-    try:
-        site = Site.objects.get_current()
-        debug_info['site_info'] = {
-            'domain': site.domain,
-            'name': site.name,
-        }
-    except Exception as e:
-        debug_info['site_info']['error'] = str(e)
-    
-    # Test OAuth URL generation
-    try:
-        callback_url = reverse('microsoft_callback')
-        full_callback_url = request.build_absolute_uri(callback_url)
-        debug_info['oauth_urls'] = {
-            'callback_relative': callback_url,
-            'callback_absolute': full_callback_url,
-            'uses_https': full_callback_url.startswith('https://'),
-        }
-    except Exception as e:
-        debug_info['oauth_urls']['error'] = str(e)
-    
-    # Check SocialApp configuration
-    try:
-        microsoft_app = SocialApp.objects.get(provider='microsoft')
-        debug_info['social_app_info'] = {
-            'name': microsoft_app.name,
-            'client_id': microsoft_app.client_id,
-            'sites': [site.domain for site in microsoft_app.sites.all()],
-        }
-    except SocialApp.DoesNotExist:
-        debug_info['social_app_info']['error'] = 'Microsoft SocialApp not found'
-    except Exception as e:
-        debug_info['social_app_info']['error'] = str(e)
-    
-    return JsonResponse(debug_info, json_dumps_params={'indent': 2})
-
-def test_authentication_config(request):
-    """
-    Comprehensive authentication configuration test.
-    Tests Site configuration and SocialApp setup for Microsoft auth.
-    Supports both JSON API responses and HTML template rendering.
-    """
-    # Check if JSON format is explicitly requested
-    format_requested = request.GET.get('format', '').lower()
-    is_json_request = (
-        format_requested == 'json' or
-        request.headers.get('Content-Type') == 'application/json' or
-        request.headers.get('Accept') == 'application/json' or
-        (hasattr(request, 'is_ajax') and request.is_ajax())
-    )
-    
-    test_results = {
-        'timestamp': timezone.now().isoformat(),
-        'site_test': {},
-        'socialapp_test': {},
-        'oauth_urls_test': {},
-        'overall_status': 'failed',
-        'errors': [],
-        'details': []
-    }
-    
-    try:
-        # Test 1: Site configuration
-        test_results['details'].append("Testing Django Site configuration...")
-        test_results['site_test'] = test_site_configuration()
-        
-        if test_results['site_test'].get('status') != 'success':
-            test_results['errors'].extend(test_results['site_test'].get('errors', []))
-        
-        # Test 2: SocialApp configuration
-        test_results['details'].append("Testing Microsoft SocialApp configuration...")
-        test_results['socialapp_test'] = test_socialapp_configuration()
-        
-        if test_results['socialapp_test'].get('status') != 'success':
-            test_results['errors'].extend(test_results['socialapp_test'].get('errors', []))
-        
-        # Test 3: OAuth URLs generation
-        test_results['details'].append("Testing OAuth URL generation...")
-        test_results['oauth_urls_test'] = test_oauth_urls_generation(request)
-        
-        if test_results['oauth_urls_test'].get('status') != 'success':
-            test_results['errors'].extend(test_results['oauth_urls_test'].get('errors', []))
-        
-        # Test 4: Environment Variables
-        test_results['details'].append("Testing environment variables configuration...")
-        test_results['env_vars_test'] = test_environment_variables()
-        
-        if test_results['env_vars_test'].get('status') != 'success':
-            test_results['errors'].extend(test_results['env_vars_test'].get('errors', []))
-        
-        # Determine overall status
-        if not test_results['errors']:
-            test_results['overall_status'] = 'success'
-            test_results['details'].append("All authentication tests passed successfully!")
-        else:
-            test_results['overall_status'] = 'failed'
-            test_results['details'].append(f"Tests completed with {len(test_results['errors'])} errors")
-        
-        # Return appropriate response format
-        return _format_auth_test_response(test_results, is_json_request, request)
-            
-    except Exception as e:
-        error_msg = f"Unexpected error during authentication test: {str(e)}"
-        test_results['errors'].append(error_msg)
-        test_results['details'].append(error_msg)
-        test_results['overall_status'] = 'failed'
-        
-        # Add stack trace for debugging
-        test_results['stack_trace'] = traceback.format_exc()
-        
-        logger.error(f"Authentication test failed: {error_msg}")
-        logger.error(f"Stack trace: {traceback.format_exc()}")
-        
-        return _format_auth_test_response(test_results, is_json_request, request)
-
-def test_site_configuration():
-    """Test Django Site configuration for django-allauth."""
-    result = {
-        'status': 'failed',
-        'operations': {},
-        'errors': [],
-        'details': []
-    }
-    
-    try:
-        # Test 1: Check SITE_ID setting
-        result['details'].append("Checking SITE_ID setting...")
-        try:
-            from django.conf import settings
-            site_id = getattr(settings, 'SITE_ID', None)
-            if site_id is None:
-                result['errors'].append("SITE_ID setting is not configured")
-                result['operations']['site_id_check'] = 'failed'
-                return result
-            else:
-                result['operations']['site_id_check'] = 'success'
-                result['details'].append(f"SITE_ID configured: {site_id}")
-                result['site_id'] = site_id
-        except Exception as e:
-            error_msg = f"Failed to check SITE_ID setting: {str(e)}"
-            result['errors'].append(error_msg)
-            result['operations']['site_id_check'] = 'failed'
-            result['details'].append(error_msg)
-            return result
-        
-        # Test 2: Check if Site exists
-        result['details'].append(f"Checking if Site with ID {site_id} exists...")
-        try:
-            from django.contrib.sites.models import Site
-            site = Site.objects.get(pk=site_id)
-            result['operations']['site_exists'] = 'success'
-            result['details'].append(f"Site found: {site.domain} - {site.name}")
-            result['site_info'] = {
-                'id': site.id,
-                'domain': site.domain,
-                'name': site.name
-            }
-        except Site.DoesNotExist:
-            error_msg = f"Site with ID {site_id} does not exist in database"
-            result['errors'].append(error_msg)
-            result['operations']['site_exists'] = 'failed'
-            result['details'].append(error_msg)
-            return result
-        except Exception as e:
-            error_msg = f"Failed to retrieve Site: {str(e)}"
-            result['errors'].append(error_msg)
-            result['operations']['site_exists'] = 'failed'
-            result['details'].append(error_msg)
-            return result
-        
-        # Test 3: Validate site domain
-        result['details'].append("Validating site domain format...")
-        try:
-            domain = site.domain
-            # Basic domain validation
-            if not domain or domain.strip() == '':
-                result['errors'].append("Site domain is empty")
-                result['operations']['domain_validation'] = 'failed'
-            elif domain == 'example.com':
-                result['errors'].append("Site domain is still set to default 'example.com'")
-                result['operations']['domain_validation'] = 'warning'
-            elif '.' not in domain:
-                result['errors'].append("Site domain appears to be invalid (no TLD)")
-                result['operations']['domain_validation'] = 'warning'
-            else:
-                result['operations']['domain_validation'] = 'success'
-                result['details'].append(f"Site domain appears valid: {domain}")
-        except Exception as e:
-            error_msg = f"Failed to validate domain: {str(e)}"
-            result['errors'].append(error_msg)
-            result['operations']['domain_validation'] = 'failed'
-            result['details'].append(error_msg)
-        
-        # Determine overall status
-        critical_operations = ['site_id_check', 'site_exists']
-        failed_critical = [op for op in critical_operations if result['operations'].get(op) != 'success']
-        
-        if not failed_critical:
-            result['status'] = 'success'
-        
-        return result
-        
-    except Exception as e:
-        error_msg = f"Unexpected error in site configuration test: {str(e)}"
-        result['errors'].append(error_msg)
-        result['details'].append(error_msg)
-        return result
-
-def test_socialapp_configuration():
-    """Test Microsoft SocialApp configuration."""
-    result = {
-        'status': 'failed',
-        'operations': {},
-        'errors': [],
-        'details': []
-    }
-    
-    try:
-        # Test 1: Check if Microsoft SocialApp exists
-        result['details'].append("Checking for Microsoft SocialApp...")
-        try:
-            from allauth.socialaccount.models import SocialApp
-            microsoft_app = SocialApp.objects.get(provider='microsoft')
-            result['operations']['socialapp_exists'] = 'success'
-            result['details'].append(f"Microsoft SocialApp found: {microsoft_app.name}")
-            result['socialapp_info'] = {
-                'id': microsoft_app.id,
-                'name': microsoft_app.name,
-                'provider': microsoft_app.provider,
-                'client_id': microsoft_app.client_id[:8] + '...' if microsoft_app.client_id else 'Not set'
-            }
-        except SocialApp.DoesNotExist:
-            error_msg = "Microsoft SocialApp does not exist in database"
-            result['errors'].append(error_msg)
-            result['operations']['socialapp_exists'] = 'failed'
-            result['details'].append(error_msg)
-            return result
-        except Exception as e:
-            error_msg = f"Failed to retrieve Microsoft SocialApp: {str(e)}"
-            result['errors'].append(error_msg)
-            result['operations']['socialapp_exists'] = 'failed'
-            result['details'].append(error_msg)
-            return result
-        
-        # Test 2: Validate client_id
-        result['details'].append("Validating client_id...")
-        try:
-            if not microsoft_app.client_id:
-                result['errors'].append("Microsoft SocialApp client_id is empty")
-                result['operations']['client_id_validation'] = 'failed'
-            elif microsoft_app.client_id == 'your-client-id-here':
-                result['errors'].append("Microsoft SocialApp client_id is still set to placeholder value")
-                result['operations']['client_id_validation'] = 'failed'
-            elif len(microsoft_app.client_id) < 10:
-                result['errors'].append("Microsoft SocialApp client_id appears to be too short")
-                result['operations']['client_id_validation'] = 'warning'
-            else:
-                result['operations']['client_id_validation'] = 'success'
-                result['details'].append(f"Client ID appears valid: {microsoft_app.client_id[:8]}...")
-        except Exception as e:
-            error_msg = f"Failed to validate client_id: {str(e)}"
-            result['errors'].append(error_msg)
-            result['operations']['client_id_validation'] = 'failed'
-            result['details'].append(error_msg)
-        
-        # Test 3: Validate client_secret
-        result['details'].append("Validating client_secret...")
-        try:
-            if not microsoft_app.secret:
-                result['errors'].append("Microsoft SocialApp client_secret is empty")
-                result['operations']['client_secret_validation'] = 'failed'
-            elif microsoft_app.secret == 'your-client-secret-here':
-                result['errors'].append("Microsoft SocialApp client_secret is still set to placeholder value")
-                result['operations']['client_secret_validation'] = 'failed'
-            else:
-                result['operations']['client_secret_validation'] = 'success'
-                result['details'].append("Client secret is configured")
-        except Exception as e:
-            error_msg = f"Failed to validate client_secret: {str(e)}"
-            result['errors'].append(error_msg)
-            result['operations']['client_secret_validation'] = 'failed'
-            result['details'].append(error_msg)
-        
-        # Test 4: Check site associations
-        result['details'].append("Checking site associations...")
-        try:
-            associated_sites = list(microsoft_app.sites.all())
-            if not associated_sites:
-                result['errors'].append("Microsoft SocialApp is not associated with any sites")
-                result['operations']['site_associations'] = 'failed'
-            else:
-                result['operations']['site_associations'] = 'success'
-                site_domains = [site.domain for site in associated_sites]
-                result['details'].append(f"Associated with sites: {', '.join(site_domains)}")
-                result['associated_sites'] = [
-                    {'id': site.id, 'domain': site.domain, 'name': site.name}
-                    for site in associated_sites
-                ]
-        except Exception as e:
-            error_msg = f"Failed to check site associations: {str(e)}"
-            result['errors'].append(error_msg)
-            result['operations']['site_associations'] = 'failed'
-            result['details'].append(error_msg)
-        
-        # Test 5: Check if associated with current site
-        result['details'].append("Checking association with current site...")
-        try:
-            from django.contrib.sites.models import Site
-            from django.conf import settings
-            current_site = Site.objects.get(pk=getattr(settings, 'SITE_ID', 1))
-            if current_site in microsoft_app.sites.all():
-                result['operations']['current_site_association'] = 'success'
-                result['details'].append(f"SocialApp is correctly associated with current site: {current_site.domain}")
-            else:
-                result['errors'].append(f"SocialApp is not associated with current site: {current_site.domain}")
-                result['operations']['current_site_association'] = 'failed'
-        except Exception as e:
-            error_msg = f"Failed to check current site association: {str(e)}"
-            result['errors'].append(error_msg)
-            result['operations']['current_site_association'] = 'failed'
-            result['details'].append(error_msg)
-        
-        # Determine overall status
-        critical_operations = ['socialapp_exists', 'client_id_validation', 'client_secret_validation', 'site_associations']
-        failed_critical = [op for op in critical_operations if result['operations'].get(op) != 'success']
-        
-        if not failed_critical:
-            result['status'] = 'success'
-        
-        return result
-        
-    except Exception as e:
-        error_msg = f"Unexpected error in SocialApp configuration test: {str(e)}"
-        result['errors'].append(error_msg)
-        result['details'].append(error_msg)
-        return result
-
-def test_oauth_urls_generation(request):
-    """Test OAuth URL generation and HTTPS settings."""
-    result = {
-        'status': 'failed',
-        'operations': {},
-        'errors': [],
-        'details': []
-    }
-    
-    try:
-        # Test 1: Check request information
-        result['details'].append("Analyzing request context...")
-        try:
-            request_info = {
-                'is_secure': request.is_secure(),
-                'scheme': request.scheme,
-                'host': request.get_host(),
-                'full_url': request.build_absolute_uri(),
-                'method': request.method
-            }
-            result['operations']['request_analysis'] = 'success'
-            result['details'].append(f"Request scheme: {request_info['scheme']}")
-            result['details'].append(f"Request host: {request_info['host']}")
-            result['details'].append(f"Is secure: {request_info['is_secure']}")
-            result['request_info'] = request_info
-        except Exception as e:
-            error_msg = f"Failed to analyze request: {str(e)}"
-            result['errors'].append(error_msg)
-            result['operations']['request_analysis'] = 'failed'
-            result['details'].append(error_msg)
-            return result
-        
-        # Test 2: Check Django settings related to HTTPS
-        result['details'].append("Checking Django HTTPS settings...")
-        try:
-            from django.conf import settings
-            https_settings = {
-                'DEBUG': getattr(settings, 'DEBUG', None),
-                'SECURE_SSL_REDIRECT': getattr(settings, 'SECURE_SSL_REDIRECT', None),
-                'SECURE_PROXY_SSL_HEADER': getattr(settings, 'SECURE_PROXY_SSL_HEADER', None),
-                'ACCOUNT_DEFAULT_HTTP_PROTOCOL': getattr(settings, 'ACCOUNT_DEFAULT_HTTP_PROTOCOL', None),
-                'USE_X_FORWARDED_HOST': getattr(settings, 'USE_X_FORWARDED_HOST', None),
-                'USE_X_FORWARDED_PORT': getattr(settings, 'USE_X_FORWARDED_PORT', None),
-            }
-            result['operations']['https_settings_check'] = 'success'
-            result['details'].append("HTTPS settings retrieved successfully")
-            result['https_settings'] = https_settings
-            
-            # Check for potential issues
-            if https_settings['ACCOUNT_DEFAULT_HTTP_PROTOCOL'] == 'http' and not settings.DEBUG:
-                result['errors'].append("ACCOUNT_DEFAULT_HTTP_PROTOCOL is set to 'http' in production")
-            
-        except Exception as e:
-            error_msg = f"Failed to check HTTPS settings: {str(e)}"
-            result['errors'].append(error_msg)
-            result['operations']['https_settings_check'] = 'failed'
-            result['details'].append(error_msg)
-        
-        # Test 3: Test OAuth callback URL generation
-        result['details'].append("Testing OAuth callback URL generation...")
-        try:
-            # Try to generate callback URL (if it exists)
-            try:
-                callback_url = reverse('microsoft_callback')
-                full_callback_url = request.build_absolute_uri(callback_url)
-                result['operations']['callback_url_generation'] = 'success'
-                result['details'].append(f"Callback URL generated: {full_callback_url}")
-                result['oauth_urls'] = {
-                    'callback_relative': callback_url,
-                    'callback_absolute': full_callback_url,
-                    'uses_https': full_callback_url.startswith('https://'),
-                }
-                
-                # Check if HTTPS is used for callback in production
-                if not full_callback_url.startswith('https://') and not getattr(settings, 'DEBUG', False):
-                    result['errors'].append("OAuth callback URL is not using HTTPS in production environment")
-                
-            except Exception as url_error:
-                # Callback URL might not exist, which is fine for this test
-                result['operations']['callback_url_generation'] = 'not_available'
-                result['details'].append(f"OAuth callback URL not configured: {str(url_error)}")
-                
-        except Exception as e:
-            error_msg = f"Failed to test OAuth URL generation: {str(e)}"
-            result['errors'].append(error_msg)
-            result['operations']['callback_url_generation'] = 'failed'
-            result['details'].append(error_msg)
-        
-        # Test 4: Check current site domain consistency
-        result['details'].append("Checking site domain consistency...")
-        try:
-            from django.contrib.sites.models import Site
-            from django.conf import settings
-            current_site = Site.objects.get(pk=getattr(settings, 'SITE_ID', 1))
-            request_host = request.get_host()
-            
-            if current_site.domain == request_host:
-                result['operations']['domain_consistency'] = 'success'
-                result['details'].append(f"Site domain matches request host: {current_site.domain}")
-            else:
-                result['operations']['domain_consistency'] = 'warning'
-                result['details'].append(f"Site domain ({current_site.domain}) differs from request host ({request_host})")
-                # This might be OK in some deployment scenarios, so it's a warning not an error
-            
-        except Exception as e:
-            error_msg = f"Failed to check domain consistency: {str(e)}"
-            result['errors'].append(error_msg)
-            result['operations']['domain_consistency'] = 'failed'
-            result['details'].append(error_msg)
-        
-        # Determine overall status (less strict since OAuth URLs might not be configured)
-        critical_operations = ['request_analysis', 'https_settings_check']
-        failed_critical = [op for op in critical_operations if result['operations'].get(op) == 'failed']
-        
-        if not failed_critical:
-            result['status'] = 'success'
-        
-        return result
-        
-    except Exception as e:
-        error_msg = f"Unexpected error in OAuth URLs test: {str(e)}"
-        result['errors'].append(error_msg)
-        result['details'].append(error_msg)
-        return result
-
-def _format_auth_test_response(test_results, is_json_request, request):
-    """Helper function to format authentication test response as JSON or HTML."""
-    if is_json_request:
-        status_code = 200 if test_results.get('overall_status') == 'success' else 500
-        return JsonResponse(test_results, status=status_code)
-    else:
-        # Transform test_results for template consumption
-        context = _transform_auth_test_results_for_template(test_results)
-        return render(request, 'upload/auth_test.html', context)
-
-def _transform_auth_test_results_for_template(test_results):
-    """Transform raw authentication test results into template-friendly format."""
-    context = {'test_results': test_results}
-    
-    # Add some computed values for easier template rendering
-    if test_results:
-        context['test_results']['passed_tests'] = 0
-        context['test_results']['failed_tests'] = len(test_results.get('errors', []))
-        context['test_results']['warnings'] = 0
-        
-        # Count successful tests
-        for test_name, test_data in test_results.items():
-            if isinstance(test_data, dict) and test_data.get('status') == 'success':
-                context['test_results']['passed_tests'] += 1
-            # Count warnings (operations marked as 'warning')
-            if isinstance(test_data, dict) and 'operations' in test_data:
-                for op_name, op_status in test_data['operations'].items():
-                    if op_status == 'warning':
-                        context['test_results']['warnings'] += 1
-    
-    return context
-
-def test_environment_variables():
-    """Test environment variables configuration for the application."""
-    result = {
-        'status': 'failed',
-        'operations': {},
-        'errors': [],
-        'details': [],
-        'env_vars': {}
-    }
-    
-    try:
-        # Define critical environment variables for different categories
-        critical_vars = {
-            'Azure Storage': {
-                'AZURE_STORAGE_CONNECTION_STRING': {'sensitive': True, 'description': 'Azure Storage connection string'},
-                'AZURE_STORAGE_CONTAINER_NAME_SOURCE': {'sensitive': False, 'description': 'Source container name'},
-                'AZURE_STORAGE_CONTAINER_NAME_TARGET': {'sensitive': False, 'description': 'Target container name'},
-            },
-            'Azure Translation': {
-                'AZURE_TRANSLATION_KEY': {'sensitive': True, 'description': 'Azure Translation service key'},
-                'AZURE_TRANSLATION_ENDPOINT': {'sensitive': False, 'description': 'Azure Translation endpoint'},
-                'AZURE_TRANSLATION_SOURCE_URI': {'sensitive': False, 'description': 'Translation source URI'},
-                'AZURE_TRANSLATION_TARGET_URI': {'sensitive': False, 'description': 'Translation target URI'},
-            },
-            'Microsoft Authentication': {
-                'MICROSOFT_CLIENT_ID': {'sensitive': False, 'description': 'Microsoft OAuth client ID'},
-                'MICROSOFT_CLIENT_SECRET': {'sensitive': True, 'description': 'Microsoft OAuth client secret'},
-                'MICROSOFT_TENANT_ID': {'sensitive': False, 'description': 'Microsoft tenant ID'},
-            },
-            'Django Settings': {
-                'DJANGO_SECRET_KEY': {'sensitive': True, 'description': 'Django secret key'},
-                'DJANGO_DEBUG': {'sensitive': False, 'description': 'Django debug mode'},
-                'DJANGO_ALLOWED_HOSTS': {'sensitive': False, 'description': 'Django allowed hosts'},
-                'DATABASE_URL': {'sensitive': True, 'description': 'Database connection URL'},
-            }
-        }
-        
-        # Test each category of environment variables
-        all_vars_status = 'success'
-        missing_critical = []
-        
-        for category, vars_dict in critical_vars.items():
-            result['details'].append(f"Checking {category} environment variables...")
-            category_vars = {}
-            
-            for var_name, var_info in vars_dict.items():
-                value = os.getenv(var_name)
-                var_result = {
-                    'description': var_info['description'],
-                    'sensitive': var_info['sensitive'],
-                    'is_set': value is not None,
-                    'length': len(value) if value else 0
-                }
-                
-                if value:
-                    # Mask sensitive values
-                    if var_info['sensitive']:
-                        if len(value) > 20:
-                            var_result['display_value'] = f"{value[:10]}...{value[-4:]} (length: {len(value)})"
-                        else:
-                            var_result['display_value'] = '*' * min(len(value), 10)
-                    else:
-                        var_result['display_value'] = value
-                    
-                    result['details'].append(f"✅ {var_name} is configured")
-                else:
-                    var_result['display_value'] = '<not set>'
-                    missing_critical.append(f"{category}: {var_name}")
-                    result['details'].append(f"❌ {var_name} is missing")
-                
-                category_vars[var_name] = var_result
-            
-            result['env_vars'][category] = category_vars
-        
-        # Check for additional environment variables that might be set
-        result['details'].append("Scanning for additional environment variables...")
-        additional_vars = {}
-        env_prefixes = ['AZURE_', 'DJANGO_', 'MICROSOFT_', 'DATABASE_', 'REDIS_', 'CELERY_']
-        
-        for key, value in os.environ.items():
-            if any(key.startswith(prefix) for prefix in env_prefixes):
-                # Skip if already covered in critical vars
-                already_covered = False
-                for category_vars in critical_vars.values():
-                    if key in category_vars:
-                        already_covered = True
-                        break
-                
-                if not already_covered:
-                    # Determine if this looks sensitive
-                    is_sensitive = any(sensitive_term in key.lower() 
-                                     for sensitive_term in ['key', 'secret', 'password', 'token', 'connection_string'])
-                    
-                    var_result = {
-                        'description': 'Additional environment variable',
-                        'sensitive': is_sensitive,
-                        'is_set': True,
-                        'length': len(value)
-                    }
-                    
-                    if is_sensitive:
-                        if len(value) > 20:
-                            var_result['display_value'] = f"{value[:10]}...{value[-4:]} (length: {len(value)})"
-                        else:
-                            var_result['display_value'] = '*' * min(len(value), 10)
-                    else:
-                        var_result['display_value'] = value
-                    
-                    additional_vars[key] = var_result
-        
-        if additional_vars:
-            result['env_vars']['Additional Variables'] = additional_vars
-            result['details'].append(f"Found {len(additional_vars)} additional environment variables")
-        
-        # Test environment loading mechanism
-        result['details'].append("Testing environment loading mechanism...")
-        try:
-            from django.conf import settings
-            debug_mode = getattr(settings, 'DEBUG', None)
-            secret_key = getattr(settings, 'SECRET_KEY', None)
-            
-            if secret_key:
-                result['details'].append("✅ Django settings loaded successfully")
-                result['operations']['django_settings'] = 'success'
-            else:
-                result['errors'].append("Django SECRET_KEY not properly loaded")
-                result['operations']['django_settings'] = 'failed'
-                all_vars_status = 'failed'
-                
-        except Exception as e:
-            result['errors'].append(f"Failed to load Django settings: {str(e)}")
-            result['operations']['django_settings'] = 'failed'
-            all_vars_status = 'failed'
-        
-        # Check for common environment variable issues
-        result['details'].append("Checking for common environment variable issues...")
-        
-        # Check for URL encoding issues
-        connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-        if connection_string and '%' in connection_string:
-            result['errors'].append("AZURE_STORAGE_CONNECTION_STRING appears to be URL-encoded")
-            all_vars_status = 'warning'
-        
-        # Generate summary
-        total_critical_vars = sum(len(vars_dict) for vars_dict in critical_vars.values())
-        total_missing = len(missing_critical)
-        
-        if missing_critical:
-            if total_missing > total_critical_vars * 0.5:  # More than 50% missing
-                result['errors'].append(f"Many critical environment variables are missing: {missing_critical}")
-                all_vars_status = 'failed'
-            else:
-                result['errors'].append(f"Some environment variables are missing: {missing_critical}")
-                if all_vars_status == 'success':
-                    all_vars_status = 'warning'
-        
-        result['summary'] = {
-            'total_critical_vars': total_critical_vars,
-            'missing_critical_vars': total_missing,
-            'additional_vars_count': len(additional_vars) if additional_vars else 0,
-            'completion_percentage': int(((total_critical_vars - total_missing) / total_critical_vars) * 100) if total_critical_vars > 0 else 0
-        }
-        
-        # Set final status
-        if all_vars_status == 'success' and not missing_critical:
-            result['status'] = 'success'
-            result['details'].append("All critical environment variables are properly configured")
-        else:
-            result['status'] = all_vars_status
-        
-        result['operations']['env_vars_check'] = result['status']
-        
-        return result
-        
-    except Exception as e:
-        error_msg = f"Unexpected error in environment variables test: {str(e)}"
-        result['errors'].append(error_msg)
-        result['details'].append(error_msg)
-        result['operations']['env_vars_check'] = 'failed'
         return result

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "westeurope"
+    },
+    "environmentName": {
+      "value": "prod"
+    },
+    "microsoftClientId": {
+      "value": "fcfbaf73-654e-49a7-9141-b994192888c6"
+    },
+    "microsoftClientSecret": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/{subscription-id}/resourceGroups/{rg-name}/providers/Microsoft.KeyVault/vaults/{keyvault-name}"
+        },
+        "secretName": "microsoft-client-secret"
+      }
+    },
+    "domainName": {
+      "value": "babelscrib.com"
+    },
+    "logRetentionDays": {
+      "value": 30
+    },
+    "prodMinReplicas": {
+      "value": 1
+    },
+    "prodMaxReplicas": {
+      "value": 3
+    },
+    "devMinReplicas": {
+      "value": 0
+    },
+    "devMaxReplicas": {
+      "value": 2
+    },
+    "cpuProd": {
+      "value": "0.5"
+    },
+    "memoryProd": {
+      "value": "1Gi"
+    },
+    "cpuDev": {
+      "value": "0.25"
+    },
+    "memoryDev": {
+      "value": "0.5Gi"
+    }
+  }
+}

@@ -366,7 +366,8 @@ class DocumentTranslationService:
         target_uri: str, 
         target_language: str,
         source_language: Optional[str] = None,
-        clear_target: bool = True,        cleanup_source: bool = False,
+        clear_target: bool = True,
+        cleanup_source: bool = False,
         cleanup_old_target_hours: int = 24
     ) -> Dict[str, Any]:
         """
@@ -435,6 +436,58 @@ class DocumentTranslationService:
             }
         
         return translation_result
+
+    def translate_documents_default(
+        self,
+        target_language: str,
+        source_language: Optional[str] = None,
+        clear_target: bool = True,
+        cleanup_source: bool = False,
+        cleanup_old_target_hours: int = 24
+    ) -> Dict[str, Any]:
+        """
+        Convenience method to translate documents using default source and target URIs from configuration.
+        
+        Args:
+            target_language (str): Target language code (e.g., 'en', 'es', 'fr')
+            source_language (str, optional): Source language code. If not provided, auto-detection is used.
+            clear_target (bool, optional): Whether to clear target container before translation. Defaults to True.
+            cleanup_source (bool, optional): Whether to clean up source files after translation. Defaults to False.
+            cleanup_old_target_hours (int, optional): Hours to keep old target files before cleanup. Defaults to 24.
+        
+        Returns:
+            Dict[str, Any]: Translation results including status, document details, and cleanup information
+        
+        Raises:
+            ValueError: If configuration is invalid
+            Exception: If translation operation fails
+        """
+        try:
+            # Get default URIs from configuration
+            config = get_config()
+            source_uri = config.source_uri
+            target_uri = config.target_uri
+            
+            self.logger.info(f"Using default source URI: {source_uri}")
+            self.logger.info(f"Using default target URI: {target_uri}")
+            
+            # Call the full method with default URIs
+            return self.translate_documents_with_cleanup(
+                source_uri=source_uri,
+                target_uri=target_uri,
+                target_language=target_language,
+                source_language=source_language,
+                clear_target=clear_target,
+                cleanup_source=cleanup_source,
+                cleanup_old_target_hours=cleanup_old_target_hours
+            )
+            
+        except ValueError as e:
+            self.logger.error(f"Configuration error in translate_documents: {str(e)}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Translation error in translate_documents: {str(e)}")
+            raise Exception(f"Document translation failed: {str(e)}")
 
     def _extract_filename_from_url(self, url: Optional[str]) -> Optional[str]:
         """
