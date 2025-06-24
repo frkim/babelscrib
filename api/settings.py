@@ -18,18 +18,24 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = env('SECRET_KEY', default='your-secret-key')
 
 # More production-safe: default to False in production-like environments
-DEBUG = env.bool('DEBUG', default=True)
+DEBUG = env.bool('DEBUG', default=False)
 
-# Critical: Set this early to ensure proper HTTPS detection in production
-if not DEBUG:
-    # Set HTTPS environment variable to force Django to recognize HTTPS
-    os.environ.setdefault('HTTPS', 'on')
+# FORCE HTTPS DETECTION: This must be set EARLY before any URL generation
+# Azure Container Apps and App Service require these headers to detect HTTPS properly
+if env.bool('FORCE_HTTPS_DETECTION', default=False) or not DEBUG:
     # Azure Container Apps and App Service use X-Forwarded-Proto header
     # This MUST be set before any URL generation happens
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     # Also handle X-Forwarded-Host and X-Forwarded-Port
     USE_X_FORWARDED_HOST = True
     USE_X_FORWARDED_PORT = True
+    # Force Django to always consider requests as secure in production
+    os.environ.setdefault('HTTPS', 'on')
+
+# Critical: Set this early to ensure proper HTTPS detection in production
+if not DEBUG:
+    # Force HTTPS for all redirects (including OAuth)
+    SECURE_SSL_REDIRECT = True
 
 ALLOWED_HOSTS = ['*']
 
@@ -63,6 +69,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'upload.middleware.ForceHttpsMiddleware',  # Custom middleware to force HTTPS detection in Azure
     'whitenoise.middleware.WhiteNoiseMiddleware',  # Add WhiteNoise for static files
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.locale.LocaleMiddleware',  # Add locale middleware for i18n
@@ -170,8 +177,8 @@ if not DEBUG:
     if not MICROSOFT_CLIENT_SECRET:
         raise ValueError("MICROSOFT_CLIENT_SECRET environment variable must be set in production")
 
-# Force HTTPS for OAuth redirects in production
-if not DEBUG:
+# Force HTTPS for OAuth redirects in production or when explicitly enabled
+if not DEBUG or env.bool('FORCE_HTTPS_DETECTION', default=False):
     # This ensures that allauth generates HTTPS URLs for OAuth redirects
     ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https'
     # Additional setting to force HTTPS scheme detection
@@ -179,6 +186,8 @@ if not DEBUG:
     # Force HTTPS for all cookie and session security
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    # Ensure request.is_secure() returns True when behind a proxy
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 else:
     ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'http'
 
