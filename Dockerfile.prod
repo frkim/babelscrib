@@ -70,8 +70,8 @@ COPY --chown=appuser:appuser . /app/
 # Ensure services directory is copied (for custom modules)
 COPY --chown=appuser:appuser services/ /app/services/
 
-# Make scripts executable
-RUN chmod +x /app/entrypoint.prod.sh
+# Make scripts executable and handle Windows line endings
+RUN sed -i 's/\r$//' /app/entrypoint.prod.sh && chmod +x /app/entrypoint.prod.sh
 
 # Switch to non-root user
 USER appuser
