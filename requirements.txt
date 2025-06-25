@@ -1,6 +1,9 @@
 # Core Django dependencies
 Django>=4.2,<5.0
 
+# Authentication dependencies - used in build_settings.py
+django-allauth>=0.54.0
+
 # Azure dependencies - used in translation_service.py and views.py
 azure-storage-blob>=12.19.0
 azure-ai-translation-document==1.0.0
