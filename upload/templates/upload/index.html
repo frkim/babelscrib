@@ -390,6 +390,11 @@
             color: #2e7d32;
             border-left-color: #43a047;
         }
+        .translation-status.warning {
+            background-color: #fff8e1;
+            color: #f57f17;
+            border-left-color: #ffa000;
+        }
         .translation-status.error {
             background-color: #ffebee;
             color: #c62828;
@@ -700,6 +705,7 @@
                 <p><small data-i18n="supported_formats">Supported formats: pdf, docx, pptx, xlsx, txt, csv, md, etc.</small></p>
                 <p><small data-i18n="document_size_limit">Document size limit: ≤ 40MB per file • Up to 1000 files per batch • Total batch size ≤ 250MB</small></p>
                 <p><small><a id="azure-ai-limits-link" href="https://learn.microsoft.com/en-us/azure/ai-services/translator/service-limits#asynchronous-batch-operation-limits" target="_blank" style="color: #007cba; text-decoration: none;"><span data-i18n="view_azure_limits">View all Azure AI Translator limits</span> →</a></small></p>
+                <p><small style="color: #666; font-style: italic;" data-i18n="auto_delete_notice">Note: Uploading new documents will automatically delete all your previous documents and translations.</small></p>
                 <div style="text-align: center; margin-top: 15px;">
                     <button type="button" class="btn" id="select-file-button" style="display: inline-block;" data-i18n="select_documents">Select Documents</button>
                 </div>

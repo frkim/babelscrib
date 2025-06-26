@@ -102,17 +102,38 @@ class DocumentTranslationService:
             # Wait for completion and get results
             result = poller.result()
             
+            # Debug: Log poller details attributes
+            self.logger.info(f"Poller details attributes: {[attr for attr in dir(poller.details) if not attr.startswith('_')]}")
+            self.logger.info(f"Poller details object: {poller.details}")
+            
+            # Safely get document counts with defaults
+            total_docs = getattr(poller.details, 'documents_total_count', None)
+            failed_docs = getattr(poller.details, 'documents_failed_count', None)
+            succeeded_docs = getattr(poller.details, 'documents_succeeded_count', None)
+            
+            self.logger.info(f"Document counts - Total: {total_docs}, Failed: {failed_docs}, Succeeded: {succeeded_docs}")
+            
             # Prepare response data
             response = {
                 'status': poller.status(),
                 'created_on': poller.details.created_on,
                 'last_updated_on': poller.details.last_updated_on,
-                'total_documents': poller.details.documents_total_count,
-                'failed_documents': poller.details.documents_failed_count,
-                'succeeded_documents': poller.details.documents_succeeded_count,
+                'total_documents': total_docs,
+                'failed_documents': failed_docs,
+                'succeeded_documents': succeeded_docs,
                 'documents': []
             }            # Process individual document results
+            succeeded_count = 0
+            failed_count = 0
+            total_count = 0
+            
             for document in result:
+                total_count += 1
+                if document.status == 'Succeeded':
+                    succeeded_count += 1
+                else:
+                    failed_count += 1
+                    
                 # Extract filename from source document URL
                 source_url = document.source_document_url if hasattr(document, 'source_document_url') else None
                 translated_url = document.translated_document_url if document.status == 'Succeeded' else None
@@ -151,6 +172,14 @@ class DocumentTranslationService:
                     } if document.status != 'Succeeded' else None
                 }
                 response['documents'].append(doc_info)
+            
+            # Use actual counts if poller details don't have them
+            if response['total_documents'] is None:
+                response['total_documents'] = total_count
+            if response['succeeded_documents'] is None:
+                response['succeeded_documents'] = succeeded_count
+            if response['failed_documents'] is None:
+                response['failed_documents'] = failed_count
             
             self.logger.info(f"Translation completed. Status: {response['status']}")
             self.logger.info(f"Total: {response['total_documents']}, Succeeded: {response['succeeded_documents']}, Failed: {response['failed_documents']}")
@@ -840,12 +869,27 @@ class DocumentTranslationService:
             # Filter the results to only include this user's files
             if 'documents' in result:
                 user_documents = []
+                self.logger.info(f"Filtering documents for user: {user_id_hash}")
+                self.logger.info(f"Total documents before filtering: {len(result['documents'])}")
+                
                 for doc in result['documents']:
                     # Check if this document belongs to the user
                     source_url = doc.get('source_url', '')
-                    if user_id_hash in source_url or self._is_user_document(source_url, user_id_hash):
+                    source_document_url = doc.get('source_document_url', '')
+                    
+                    self.logger.info(f"Checking document: source_url={source_url}, source_document_url={source_document_url}")
+                    
+                    # Check both URL fields
+                    url_to_check = source_url or source_document_url
+                    belongs_to_user = user_id_hash in url_to_check or self._is_user_document(url_to_check, user_id_hash)
+                    
+                    self.logger.info(f"Document belongs to user {user_id_hash}: {belongs_to_user}")
+                    
+                    if belongs_to_user:
                         user_documents.append(doc)
+                        self.logger.info(f"Added document to user documents: {doc.get('source_filename', doc.get('id', 'unknown'))}")
                 
+                self.logger.info(f"Documents after filtering: {len(user_documents)}")
                 result['documents'] = user_documents
                 result['user_documents_count'] = len(user_documents)
                 result['total_documents_in_container'] = len(result.get('all_documents', []))
@@ -1285,7 +1329,43 @@ class DocumentTranslationService:
                 except Exception as e:
                     self.logger.warning(f"Failed to delete temporary container {container_name}: {str(e)}")
 
-    # ...existing code...
+    def translate_documents_user_specific(
+        self,
+        user_id_hash: str,
+        target_language: str,
+        source_language: Optional[str] = None,
+        clear_target: bool = True,
+        cleanup_source: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Translate documents for a specific user using default container URIs.
+        
+        Args:
+            user_id_hash (str): User ID hash for filtering and isolation
+            target_language (str): Target language code (e.g., 'en', 'es', 'fr')
+            source_language (str, optional): Source language code. If not provided, auto-detection is used.
+            clear_target (bool, optional): Whether to clear user's target files before translation. Defaults to True.
+            cleanup_source (bool, optional): Whether to clean up user's source files after translation. Defaults to False.
+        
+        Returns:
+            Dict[str, Any]: Translation results including cleanup information
+        """
+        # Get default URIs from environment
+        source_uri = os.getenv('AZURE_TRANSLATION_SOURCE_URI')
+        target_uri = os.getenv('AZURE_TRANSLATION_TARGET_URI')
+        
+        if not source_uri or not target_uri:
+            raise ValueError("AZURE_TRANSLATION_SOURCE_URI and AZURE_TRANSLATION_TARGET_URI must be set")
+        
+        return self.translate_documents_with_cleanup_for_user(
+            source_uri=source_uri,
+            target_uri=target_uri,
+            target_language=target_language,
+            user_id_hash=user_id_hash,
+            source_language=source_language,
+            clear_target=clear_target,
+            cleanup_source=cleanup_source
+        )
 
 def create_translation_service(key: Optional[str] = None, endpoint: Optional[str] = None) -> DocumentTranslationService:
     """

@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('Upload.js loaded - Version: 2025-06-25 23:30');
     console.log('DOM loaded, starting script');
 
     const fileDrop = document.getElementById('file-drop');
@@ -653,6 +654,18 @@ document.addEventListener('DOMContentLoaded', function() {
                             throw new Error(data.error || 'Translation conflict occurred');
                         });
                     }
+                    
+                    // Check for other error status codes
+                    if (!response.ok) {
+                        // Clear both intervals
+                        clearInterval(progressInterval);
+                        clearInterval(timeInterval);
+                        
+                        return response.json().then(data => {
+                            throw new Error(data.error || `Translation failed with status ${response.status}`);
+                        });
+                    }
+                    
                     return response.json();
                 })
                 .then(data => {
@@ -660,13 +673,54 @@ document.addEventListener('DOMContentLoaded', function() {
                     clearInterval(progressInterval);
                     clearInterval(timeInterval);
                     
+                    // Debug logging
+                    console.log('Translation response received:', data);
+                    console.log('Translation data.data:', data.data);
+                    console.log('data.success:', data.success);
+                    console.log('data.error:', data.error);
+                    if (data.data) {
+                        console.log('Total documents:', data.data.total_documents);
+                        console.log('Succeeded documents:', data.data.succeeded_documents);
+                        console.log('Failed documents:', data.data.failed_documents);
+                        console.log('Documents array:', data.data.documents);
+                        console.log('Documents array length:', data.data.documents ? data.data.documents.length : 'undefined');
+                        if (data.data.documents && data.data.documents.length > 0) {
+                            console.log('First document:', data.data.documents[0]);
+                        }
+                    }
+                    
                     if (data.success) {
+                        // Ensure we have valid counts, defaulting to 0 if undefined
+                        const totalDocs = data.data.total_documents ?? 0;
+                        const succeededDocs = data.data.succeeded_documents ?? 0;
+                        const failedDocs = data.data.failed_documents ?? 0;
+                        
+                        // Determine the appropriate message based on the status and results
+                        let mainMessage;
+                        let statusType = 'success';
+                        
+                        if (data.data.status === 'Succeeded' && failedDocs === 0) {
+                            // All documents succeeded
+                            mainMessage = window.BabelScribI18n ? window.BabelScribI18n.t('translation_completed_successfully') : 'Translation completed successfully!';
+                        } else if (data.data.status === 'Succeeded' && failedDocs > 0) {
+                            // Some documents succeeded, some failed
+                            mainMessage = window.BabelScribI18n ? window.BabelScribI18n.t('translation_completed_with_failures') : 'Translation completed with some failures.';
+                            statusType = 'warning';
+                        } else if (data.data.status === 'Failed' || (succeededDocs === 0 && failedDocs > 0)) {
+                            // All documents failed
+                            mainMessage = window.BabelScribI18n ? window.BabelScribI18n.t('translation_failed_completely') : 'Translation failed completely.';
+                            statusType = 'error';
+                        } else {
+                            // Default fallback
+                            mainMessage = (window.BabelScribI18n ? window.BabelScribI18n.t('translation_completed_successfully') : 'Translation completed successfully!');
+                        }
+                        
                         // Build main success message
-                        let successMessage = (window.BabelScribI18n ? window.BabelScribI18n.t('translation_completed_successfully') : 'Translation completed successfully!') + ' ' +
+                        let successMessage = mainMessage + ' ' +
                             (window.BabelScribI18n ? window.BabelScribI18n.t('status_label') : 'Status:') + ' ' + data.data.status + '. ' +
-                            (window.BabelScribI18n ? window.BabelScribI18n.t('total_documents', {total: data.data.total_documents}) : `Total documents: ${data.data.total_documents}`) + ', ' +
-                            (window.BabelScribI18n ? window.BabelScribI18n.t('succeeded_label', {count: data.data.succeeded_documents}) : `Succeeded: ${data.data.succeeded_documents}`) + ', ' +
-                            (window.BabelScribI18n ? window.BabelScribI18n.t('failed_label', {count: data.data.failed_documents}) : `Failed: ${data.data.failed_documents}`);
+                            (window.BabelScribI18n ? window.BabelScribI18n.t('total_documents', {total: totalDocs}) : `Total documents: ${totalDocs}`) + ', ' +
+                            (window.BabelScribI18n ? window.BabelScribI18n.t('succeeded_label', {count: succeededDocs}) : `Succeeded: ${succeededDocs}`) + ', ' +
+                            (window.BabelScribI18n ? window.BabelScribI18n.t('failed_label', {count: failedDocs}) : `Failed: ${failedDocs}`);
                         
                         // Add source cleanup information if available
                         if (data.data.source_cleanup) {
@@ -687,22 +741,25 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                         }
                         
-                        showTranslationStatus(successMessage, 'success');
+                        showTranslationStatus(successMessage, statusType);
                         
                         // Show detailed results if available
                         if (data.data.documents && data.data.documents.length > 0) {
+                            console.log('Processing documents for display:', data.data.documents);
                             let detailsHtml = '<br><details><summary>' + (window.BabelScribI18n ? window.BabelScribI18n.t('view_translation_details') : 'View translation details') + '</summary><ul>';
                             let downloadLinksHtml = '<br><div style="margin-top: 15px;"><h5>' + (window.BabelScribI18n ? window.BabelScribI18n.t('download_translated_documents') : 'Download Translated Documents:') + '</h5><ul style="list-style: none; padding-left: 0;">';
                             let hasSuccessfulTranslations = false;
                             
-                            data.data.documents.forEach(doc => {
+                            data.data.documents.forEach((doc, index) => {
                                 // Debug logging
-                                console.log('Document data:', doc);
-                                console.log('Source filename:', doc.source_filename);
-                                console.log('Translated filename:', doc.translated_filename);
-                                console.log('Document ID:', doc.id);
+                                console.log(`Document ${index}:`, doc);
+                                console.log(`Document ${index} status:`, doc.status);
+                                console.log(`Document ${index} source filename:`, doc.source_filename);
+                                console.log(`Document ${index} translated filename:`, doc.translated_filename);
+                                console.log(`Document ${index} ID:`, doc.id);
                                 
                                 if (doc.status === 'Succeeded') {
+                                    console.log(`Document ${index} is successful, adding to download links`);
                                     hasSuccessfulTranslations = true;
                                     // Use translated filename if available, otherwise use source filename, fallback to ID
                                     const displayName = doc.translated_filename || doc.source_filename || doc.id;
@@ -712,18 +769,37 @@ document.addEventListener('DOMContentLoaded', function() {
                                     // Add download link for successful translations
                                     // Use the translated filename for the download URL
                                     const fileName = doc.translated_filename || `translated_${doc.source_filename}` || `document_${doc.id}`;
-                                    const downloadUrl = `/download/${encodeURIComponent(fileName)}/`;
+                                    
+                                    // Extract just the filename without any path for URLs
+                                    // If fileName contains a path separator, take only the filename part
+                                    const actualFileName = fileName.includes('/') ? fileName.split('/').pop() : fileName;
+                                    const fullPath = fileName; // Keep the full path for internal operations
+                                    
+                                    const downloadUrl = `/download/${encodeURIComponent(actualFileName)}/`;
+                                    const deleteUrl = `/delete-individual/${encodeURIComponent(actualFileName)}/`;
                                     downloadLinksHtml += `
                                         <li style="margin: 8px 0; padding: 8px; background-color: #e8f5e8; border-radius: 4px; border-left: 3px solid #43a047;">
-                                            <strong>${fileName}</strong><br>
+                                            <strong>${actualFileName}</strong><br>
                                             <small>` + (window.BabelScribI18n ? window.BabelScribI18n.t('translated_to', {language: doc.translated_to}) : `Translated to: ${doc.translated_to}`) + `</small><br>
-                                            <a href="${downloadUrl}" 
-                                               download="${fileName}" 
-                                               style="color: #2e7d32; text-decoration: none; font-weight: bold; margin-top: 5px; display: inline-block;"
-                                               onmouseover="this.style.textDecoration='underline'" 
-                                               onmouseout="this.style.textDecoration='none'">
-                                                📥 ` + (window.BabelScribI18n ? window.BabelScribI18n.t('download_translated_document') : 'Download Translated Document') + `
-                                            </a>
+                                            <div style="margin-top: 8px; display: flex; align-items: center; gap: 15px;">
+                                                <a href="${downloadUrl}" 
+                                                   download="${actualFileName}" 
+                                                   style="color: #2e7d32; text-decoration: none; font-weight: bold; display: inline-flex; align-items: center; gap: 5px;"
+                                                   onmouseover="this.style.textDecoration='underline'" 
+                                                   onmouseout="this.style.textDecoration='none'">
+                                                    📥 ` + (window.BabelScribI18n ? window.BabelScribI18n.t('download_translated_document') : 'Download Translated Document') + `
+                                                </a>
+                                                <a href="#" 
+                                                   data-filename="${actualFileName}"
+                                                   data-delete-url="${deleteUrl}"
+                                                   class="delete-individual-btn"
+                                                   style="color: #d32f2f; text-decoration: none; font-weight: bold; display: inline-flex; align-items: center; gap: 5px;"
+                                                   title="` + (window.BabelScribI18n ? window.BabelScribI18n.t('delete_translated_document_tooltip') : 'Delete the translated document from the server') + `"
+                                                   onmouseover="this.style.textDecoration='underline'" 
+                                                   onmouseout="this.style.textDecoration='none'">
+                                                    🗑️ ` + (window.BabelScribI18n ? window.BabelScribI18n.t('delete') : 'Delete') + `
+                                                </a>
+                                            </div>
                                         </li>
                                     `;
                                 } else {
@@ -735,7 +811,26 @@ document.addEventListener('DOMContentLoaded', function() {
                             });
                             
                             detailsHtml += '</ul></details>';
-                            downloadLinksHtml += '</ul></div>';
+                            downloadLinksHtml += '</ul>';
+                            
+                            console.log('hasSuccessfulTranslations:', hasSuccessfulTranslations);
+                            console.log('downloadLinksHtml:', downloadLinksHtml);
+                            
+                            // Add delete button if there are successful translations
+                            if (hasSuccessfulTranslations) {
+                                downloadLinksHtml += `
+                                    <div style="margin-top: 15px; text-align: center;">
+                                        <button id="delete-translated-btn" 
+                                                style="background-color: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 14px; transition: background-color 0.2s;"
+                                                onmouseover="this.style.backgroundColor='#c82333'" 
+                                                onmouseout="this.style.backgroundColor='#dc3545'">
+                                            🗑️ ` + (window.BabelScribI18n ? window.BabelScribI18n.t('delete_all_translated_documents') : 'Delete All Translated Documents') + `
+                                        </button>
+                                    </div>
+                                `;
+                            }
+                            
+                            downloadLinksHtml += '</div>';
                             
                             const currentStatus = translationStatus.innerHTML;
                             let finalHtml = currentStatus + detailsHtml;
@@ -743,9 +838,47 @@ document.addEventListener('DOMContentLoaded', function() {
                             // Only add download links if there are successful translations
                             if (hasSuccessfulTranslations) {
                                 finalHtml += downloadLinksHtml;
+                                console.log('Adding download links to final HTML');
+                            } else {
+                                console.log('No successful translations found, not adding download links');
                             }
                             
+                            console.log('Final HTML being set:', finalHtml);
                             translationStatus.innerHTML = finalHtml;
+                            
+                            // Add event listener for delete button if it exists
+                            if (hasSuccessfulTranslations) {
+                                const deleteBtn = document.getElementById('delete-translated-btn');
+                                if (deleteBtn) {
+                                    deleteBtn.addEventListener('click', function() {
+                                        const confirmMessage = window.BabelScribI18n ? 
+                                            window.BabelScribI18n.t('delete_confirm_message') : 
+                                            'Are you sure you want to delete all translated documents? This action cannot be undone.';
+                                            
+                                        if (confirm(confirmMessage)) {
+                                            deleteAllTranslatedDocuments();
+                                        }
+                                    });
+                                }
+                                
+                                // Add event listeners for individual delete buttons
+                                const individualDeleteBtns = document.querySelectorAll('.delete-individual-btn');
+                                individualDeleteBtns.forEach(btn => {
+                                    btn.addEventListener('click', function(e) {
+                                        e.preventDefault();
+                                        const filename = this.getAttribute('data-filename');
+                                        const deleteUrl = this.getAttribute('data-delete-url');
+                                        
+                                        const confirmMessage = window.BabelScribI18n ? 
+                                            window.BabelScribI18n.t('delete_individual_confirm_message', {filename: filename}) : 
+                                            `Are you sure you want to delete "${filename}"? This action cannot be undone.`;
+                                            
+                                        if (confirm(confirmMessage)) {
+                                            deleteIndividualTranslatedDocument(filename, deleteUrl);
+                                        }
+                                    });
+                                });
+                            }
                         }
                     } else {
                         showTranslationStatus((window.BabelScribI18n ? window.BabelScribI18n.t('translation_failed_error', {error: data.error}) : `Translation failed: ${data.error}`), 'error');
@@ -759,7 +892,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.error('Translation error:', error);
                     const errorMessage = error.message || (window.BabelScribI18n ? window.BabelScribI18n.t('translation_request_failed') : 'Translation request failed. Please try again.');
                     
-                    if (errorMessage.includes('Target files already exist') || errorMessage.includes('TargetFileAlreadyExists')) {
+                    if (errorMessage.includes('No documents found for translation')) {
+                        showTranslationStatus(
+                            window.BabelScribI18n ? window.BabelScribI18n.t('no_documents_for_translation') : 'No documents found for translation. Please upload documents first.',
+                            'error'
+                        );
+                    } else if (errorMessage.includes('Session error')) {
+                        showTranslationStatus(
+                            window.BabelScribI18n ? window.BabelScribI18n.t('session_error_translation') : 'Session error. Please refresh the page and try again.',
+                            'error'
+                        );
+                    } else if (errorMessage.includes('Target files already exist') || errorMessage.includes('TargetFileAlreadyExists')) {
                         showTranslationStatus(
                             window.BabelScribI18n ? window.BabelScribI18n.t('previous_files_cleared') : 'Previous translation files were found and cleared automatically. Please try the translation again.',
                             'error'
@@ -890,7 +1033,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const url = '/upload/';
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('email', emailInput.value.trim());
+        formData.append('user_email', emailInput.value.trim());
+        
+        // Add CSRF token
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        formData.append('csrfmiddlewaretoken', csrfToken);
 
         return fetch(url, {
             method: 'POST',
@@ -898,10 +1045,19 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => {
             if (response.ok) {
-                return response.json().then(data => ({
-                    success: true,
-                    message: data.message || 'Upload successful!'
-                }));
+                return response.json().then(data => {
+                    let message = data.message || 'Upload successful!';
+                    
+                    // Add information about deleted documents if any
+                    if (data.previous_documents_deleted && data.previous_documents_deleted.count > 0) {
+                        message += ` (${data.previous_documents_deleted.count} previous document(s) were automatically deleted)`;
+                    }
+                    
+                    return ({
+                        success: true,
+                        message: message
+                    });
+                });
             } else {
                 return response.json().then(data => ({
                     success: false,
@@ -968,6 +1124,190 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('- Button disabled: invalid email');
             return false;
         }
+    }
+    
+    // Function to delete all translated documents
+    function deleteAllTranslatedDocuments() {
+        const translationStatus = document.getElementById('translation-status');
+        
+        // Show loading state
+        if (translationStatus) {
+            const loadingMessage = window.BabelScribI18n ? 
+                window.BabelScribI18n.t('deleting_translated_documents') : 
+                'Deleting translated documents...';
+            translationStatus.innerHTML = `
+                <div class="translation-progress-text">
+                    <div class="translation-spinner"></div>
+                    <span>${loadingMessage}</span>
+                </div>
+            `;
+            translationStatus.className = 'translation-status show loading';
+        }
+        
+        // Make delete request
+        fetch('/delete-translated/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const successMessage = window.BabelScribI18n ? 
+                    window.BabelScribI18n.t('deleted_translated_documents_success', {count: data.deleted_count}) : 
+                    `Successfully deleted ${data.deleted_count} translated documents`;
+                
+                // Clear the translation status area completely
+                if (translationStatus) {
+                    translationStatus.innerHTML = successMessage;
+                    translationStatus.className = 'translation-status show success';
+                    
+                    // Clear the status after a few seconds
+                    setTimeout(() => {
+                        translationStatus.innerHTML = '';
+                        translationStatus.className = 'translation-status';
+                    }, 3000);
+                }
+            } else {
+                const errorMessage = window.BabelScribI18n ? 
+                    window.BabelScribI18n.t('delete_translated_documents_error', {error: data.error}) : 
+                    `Failed to delete translated documents: ${data.error}`;
+                
+                if (translationStatus) {
+                    translationStatus.innerHTML = errorMessage;
+                    translationStatus.className = 'translation-status show error';
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Delete error:', error);
+            const errorMessage = window.BabelScribI18n ? 
+                window.BabelScribI18n.t('delete_translated_documents_error', {error: error.message}) : 
+                `Failed to delete translated documents: ${error.message}`;
+            
+            if (translationStatus) {
+                translationStatus.innerHTML = errorMessage;
+                translationStatus.className = 'translation-status show error';
+            }
+        });
+    }
+    
+    function deleteIndividualTranslatedDocument(filename, deleteUrl) {
+        const translationStatus = document.getElementById('translation-status');
+        
+        // Show loading state
+        if (translationStatus) {
+            const loadingMessage = window.BabelScribI18n ? 
+                window.BabelScribI18n.t('deleting_individual_document', {filename: filename}) : 
+                `Deleting ${filename}...`;
+            translationStatus.innerHTML = `
+                <div class="translation-progress-text">
+                    <div class="translation-spinner"></div>
+                    <span>${loadingMessage}</span>
+                </div>
+            `;
+            translationStatus.className = 'translation-status show loading';
+        }
+        
+        // Get CSRF token
+        function getCsrfToken() {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+            return csrfToken ? csrfToken.value : '';
+        }
+        
+        // Make delete request
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+        
+        // Add CSRF token if available
+        const csrfToken = getCsrfToken();
+        if (csrfToken) {
+            headers['X-CSRFToken'] = csrfToken;
+        }
+        
+        fetch(deleteUrl, {
+            method: 'POST',
+            headers: headers
+        })
+        .then(response => {
+            console.log('Delete response status:', response.status);
+            console.log('Delete response headers:', response.headers);
+            
+            // Check if response is JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                console.error('Response is not JSON, content-type:', contentType);
+                return response.text().then(text => {
+                    console.error('Response text:', text);
+                    throw new Error(`Server returned non-JSON response: ${text.substring(0, 200)}...`);
+                });
+            }
+            
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                const successMessage = window.BabelScribI18n ? 
+                    window.BabelScribI18n.t('deleted_individual_document_success', {filename: filename}) : 
+                    `Successfully deleted ${filename}`;
+                
+                // Remove the individual file from the download list 
+                const deleteBtn = document.querySelector(`[data-filename="${filename}"]`);
+                if (deleteBtn) {
+                    const listItem = deleteBtn.closest('li');
+                    if (listItem) {
+                        listItem.remove();
+                    }
+                }
+                
+                // Show success message briefly
+                if (translationStatus) {
+                    translationStatus.innerHTML = successMessage;
+                    translationStatus.className = 'translation-status show success';
+                    
+                    // Clear the status after a few seconds
+                    setTimeout(() => {
+                        translationStatus.innerHTML = '';
+                        translationStatus.className = 'translation-status';
+                    }, 2000);
+                }
+                
+                // Check if there are any remaining download links
+                const remainingDownloadLinks = document.querySelectorAll('.delete-individual-btn');
+                if (remainingDownloadLinks.length === 0) {
+                    // If no more files, remove the entire download section
+                    const downloadSection = document.querySelector('div[style*="margin-top: 15px;"] h5');
+                    if (downloadSection) {
+                        const downloadContainer = downloadSection.closest('div');
+                        if (downloadContainer) {
+                            downloadContainer.remove();
+                        }
+                    }
+                }
+            } else {
+                const errorMessage = window.BabelScribI18n ? 
+                    window.BabelScribI18n.t('delete_individual_document_error', {filename: filename, error: data.error}) : 
+                    `Failed to delete ${filename}: ${data.error}`;
+                
+                if (translationStatus) {
+                    translationStatus.innerHTML = errorMessage;
+                    translationStatus.className = 'translation-status show error';
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Delete error:', error);
+            const errorMessage = window.BabelScribI18n ? 
+                window.BabelScribI18n.t('delete_individual_document_error', {filename: filename, error: error.message}) : 
+                `Failed to delete ${filename}: ${error.message}`;
+            
+            if (translationStatus) {
+                translationStatus.innerHTML = errorMessage;
+                translationStatus.className = 'translation-status show error';
+            }
+        });
     }
     
     // Make function globally accessible

@@ -1,4 +1,0 @@
-# This is a placeholder for the BabelScrib logo
-# The actual logo file should be created from the provided image attachment
-# For now, this serves as documentation that the logo.png file should contain
-# the BabelScrib logo with the colorful circular icon and "BabelScrib" text

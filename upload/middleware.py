@@ -3,6 +3,13 @@ Custom middleware to ensure proper HTTPS detection in Azure Container Apps/App S
 This middleware forces Django to recognize HTTPS when running behind Azure's load balancer.
 """
 
+from django.utils import timezone
+from django.http import JsonResponse
+from .models import UserSession
+import logging
+
+logger = logging.getLogger(__name__)
+
 class ForceHttpsMiddleware:
     """
     Middleware to force HTTPS detection when running behind Azure load balancer.
@@ -45,3 +52,55 @@ class ForceHttpsMiddleware:
         
         response = self.get_response(request)
         return response
+
+class UserSessionMiddleware:
+    """
+    Middleware to handle user session management for file isolation.
+    """
+    
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        # Process request before view
+        self.process_request(request)
+        
+        response = self.get_response(request)
+        return response
+
+    def process_request(self, request):
+        """
+        Add user session info to request if available.
+        """
+        session_key = request.session.session_key
+        if session_key:
+            try:
+                user_session = UserSession.objects.get(session_key=session_key)
+                # Update last activity
+                user_session.last_activity = timezone.now()
+                user_session.save()
+                
+                # Add user info to request
+                request.user_email = user_session.user_email
+                request.user_id_hash = user_session.user_id_hash
+                request.user_session = user_session
+                
+            except UserSession.DoesNotExist:
+                # No user session found
+                request.user_email = None
+                request.user_id_hash = None
+                request.user_session = None
+        else:
+            request.user_email = None
+            request.user_id_hash = None
+            request.user_session = None
+
+def require_user_session(view_func):
+    """
+    Decorator to require a valid user session for a view.
+    """
+    def wrapper(request, *args, **kwargs):
+        if not hasattr(request, 'user_session') or not request.user_session:
+            return JsonResponse({'error': 'User session required. Please upload a file first.'}, status=401)
+        return view_func(request, *args, **kwargs)
+    return wrapper

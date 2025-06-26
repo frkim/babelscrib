@@ -196,3 +196,15 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 .env.production
+
+# Debug and test files
+debug*.log
+debug*.txt
+debug*.py
+test_*.txt
+test_*.py
+test_*.json
+*_test.txt
+*_test.py
+cookies*.txt
+translate_test.json

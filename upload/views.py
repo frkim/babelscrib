@@ -14,8 +14,12 @@ from django.utils import timezone
 import json
 import urllib.parse
 import mimetypes
-# Document model import
-from .models import Document
+import hashlib
+from django.views.decorators.http import require_http_methods
+
+# Document model imports
+from .models import Document, UserSession
+from .middleware import require_user_session
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +31,45 @@ try:
 except ImportError:
     TRANSLATION_AVAILABLE = False
     logger.warning("Translation services not available - storage test will skip translation tests")
+
+def create_user_hash(email):
+    """Create a consistent hash from user email."""
+    return hashlib.sha256(email.encode()).hexdigest()[:16]
+
+def get_or_create_user_session(request, user_email):
+    """
+    Get or create a user session for the given email.
+    """
+    # Ensure we have a session key
+    if not request.session.session_key:
+        request.session.create()
+    
+    session_key = request.session.session_key
+    user_id_hash = create_user_hash(user_email)
+    
+    # Get or create user session
+    user_session, created = UserSession.objects.get_or_create(
+        session_key=session_key,
+        defaults={
+            'user_email': user_email,
+            'user_id_hash': user_id_hash,
+        }
+    )
+    
+    if not created:
+        # Update existing session
+        user_session.user_email = user_email
+        user_session.user_id_hash = user_id_hash
+        user_session.last_activity = timezone.now()
+        user_session.save()
+    
+    # Add to request for this request
+    request.user_email = user_email
+    request.user_id_hash = user_id_hash
+    request.user_session = user_session
+    
+    logger.info(f"User session {'created' if created else 'updated'} for {user_email}")
+    return user_session
 
 def debug_connection_string(connection_string):
     """Debug helper to safely log connection string issues without exposing sensitive data"""
@@ -57,6 +100,127 @@ def debug_connection_string(connection_string):
         
     logger.info("Connection string appears to be properly formatted")
     return connection_string
+
+def delete_user_documents(user_id_hash, user_email):
+    """
+    Delete all existing documents for a user from both database and Azure storage.
+    Returns a dictionary with deletion results.
+    """
+    try:
+        # Get user's documents
+        user_documents = Document.objects.filter(user_id_hash=user_id_hash)
+        
+        if not user_documents.exists():
+            logger.info(f"No existing documents found for user: {user_email}")
+            return {
+                'success': True,
+                'message': 'No existing documents to delete',
+                'deleted_count': 0,
+                'blob_deletions': {'source': 0, 'target': 0}
+            }
+        
+        document_count = user_documents.count()
+        logger.info(f"Found {document_count} existing documents for user: {user_email}")
+        
+        # Get connection string for Azure Storage
+        connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        if not connection_string:
+            logger.error("Azure Storage connection string not found")
+            # Still delete from database even if blob deletion fails
+            deleted_db_count = user_documents.count()
+            user_documents.delete()
+            return {
+                'success': False,
+                'message': 'Storage configuration missing, but database records deleted',
+                'deleted_count': deleted_db_count,
+                'blob_deletions': {'source': 0, 'target': 0}
+            }
+        
+        # Debug and fix connection string if needed
+        fixed_connection_string = debug_connection_string(connection_string)
+        if not fixed_connection_string:
+            logger.error("Invalid Azure Storage connection string format")
+            # Still delete from database even if blob deletion fails
+            deleted_db_count = user_documents.count()
+            user_documents.delete()
+            return {
+                'success': False,
+                'message': 'Storage configuration invalid, but database records deleted',
+                'deleted_count': deleted_db_count,
+                'blob_deletions': {'source': 0, 'target': 0}
+            }
+        
+        # Initialize blob service client
+        blob_service_client = BlobServiceClient.from_connection_string(fixed_connection_string)
+        
+        # Get container names
+        source_container = os.getenv('AZURE_STORAGE_CONTAINER_NAME_SOURCE', 'source')
+        target_container = os.getenv('AZURE_STORAGE_CONTAINER_NAME_TARGET', 'target')
+        
+        blob_deletions = {'source': 0, 'target': 0}
+        
+        # Delete blobs from Azure Storage
+        for document in user_documents:
+            # Delete from source container (original files)
+            if document.user_blob_name:
+                try:
+                    source_blob_client = blob_service_client.get_blob_client(
+                        container=source_container, 
+                        blob=document.user_blob_name
+                    )
+                    source_blob_client.delete_blob()
+                    blob_deletions['source'] += 1
+                    logger.info(f"Deleted source blob: {document.user_blob_name}")
+                except ResourceNotFoundError:
+                    logger.warning(f"Source blob not found: {document.user_blob_name}")
+                except Exception as e:
+                    logger.error(f"Error deleting source blob {document.user_blob_name}: {str(e)}")
+            
+            # Delete from target container (translated files)
+            # Try both with original filename and user-specific path
+            target_blob_paths = [
+                f"{user_id_hash}/{document.blob_name}",  # User-specific path with original filename
+                f"{user_id_hash}/{document.title}",     # User-specific path with title
+            ]
+            
+            for target_blob_path in target_blob_paths:
+                try:
+                    target_blob_client = blob_service_client.get_blob_client(
+                        container=target_container, 
+                        blob=target_blob_path
+                    )
+                    target_blob_client.delete_blob()
+                    blob_deletions['target'] += 1
+                    logger.info(f"Deleted target blob: {target_blob_path}")
+                    break  # If one path works, don't try the others
+                except ResourceNotFoundError:
+                    # This is expected if the file doesn't exist or wasn't translated
+                    continue
+                except Exception as e:
+                    logger.error(f"Error deleting target blob {target_blob_path}: {str(e)}")
+        
+        # Delete database records
+        deleted_db_count = user_documents.count()
+        user_documents.delete()
+        
+        logger.info(f"Successfully deleted {deleted_db_count} documents for user: {user_email}")
+        logger.info(f"Blob deletions - Source: {blob_deletions['source']}, Target: {blob_deletions['target']}")
+        
+        return {
+            'success': True,
+            'message': f'Successfully deleted {deleted_db_count} existing documents',
+            'deleted_count': deleted_db_count,
+            'blob_deletions': blob_deletions
+        }
+        
+    except Exception as e:
+        logger.error(f"Error deleting user documents for {user_email}: {str(e)}")
+        return {
+            'success': False,
+            'message': f'Error deleting existing documents: {str(e)}',
+            'deleted_count': 0,
+            'blob_deletions': {'source': 0, 'target': 0}
+        }
 
 def health_check(request):
     """
@@ -152,6 +316,38 @@ def readiness_check(request):
 @csrf_exempt
 def upload_file(request):
     if request.method == 'POST':
+        # Debug logging to understand the request
+        logger.info(f"Upload request received")
+        logger.debug(f"Content-Type: {request.content_type}")
+        logger.debug(f"POST data keys: {list(request.POST.keys())}")
+        logger.debug(f"FILES data keys: {list(request.FILES.keys())}")
+        # Get user email from form data - check both possible field names
+        user_email = request.POST.get('user_email', '').strip()
+        if not user_email:
+            user_email = request.POST.get('email', '').strip()
+        
+        logger.debug(f"Extracted user_email: '{user_email}'")
+        
+        if not user_email:
+            logger.error("No email found in request.POST")
+            return JsonResponse({'error': 'User email is required'}, status=400)
+        
+        # Validate email format
+        import re
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, user_email):
+            return JsonResponse({'error': 'Invalid email format'}, status=400)
+        
+        # Create or update user session
+        user_session = get_or_create_user_session(request, user_email)
+        
+        # Delete all existing documents for this user before uploading new ones
+        user_id_hash = request.user_id_hash
+        deletion_result = delete_user_documents(user_id_hash, user_email)
+        
+        if deletion_result['deleted_count'] > 0:
+            logger.info(f"Deleted {deletion_result['deleted_count']} existing documents for user: {user_email}")
+        
         # Handle both single file and multiple files
         files = request.FILES.getlist('file') if 'file' in request.FILES else []
         
@@ -164,7 +360,7 @@ def upload_file(request):
         if not file:
             return JsonResponse({'error': 'No file provided'}, status=400)
         
-        logger.info(f"Upload request for file: {file.name}")
+        logger.info(f"Upload request for file: {file.name} by user: {user_email}")
         
         try:
             # Get connection string from environment
@@ -197,29 +393,43 @@ def upload_file(request):
                 logger.error(f"Error creating container: {str(e)}")
                 return JsonResponse({'error': 'Failed to create storage container'}, status=500)
             
-            # Create simple blob name (without user isolation)
-            import uuid
-            unique_id = str(uuid.uuid4())[:8]
-            blob_name = f"{unique_id}_{file.name}"
+            # Create user-specific blob name with user hash prefix
+            user_id_hash = request.user_id_hash
+            sanitized_filename = re.sub(r'[^\w\-_\.]', '_', file.name)
+            user_blob_name = f"{user_id_hash}/{sanitized_filename}"
             
             # Get blob client and upload file
-            blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
+            blob_client = blob_service_client.get_blob_client(container=container_name, blob=user_blob_name)
             blob_client.upload_blob(file, overwrite=True)
             
             # Save document record in database
             document = Document(
                 title=file.name,
-                blob_name=blob_name
+                user_email=user_email,
+                user_id_hash=user_id_hash,
+                blob_name=file.name,  # Original filename
+                user_blob_name=user_blob_name  # User-specific blob name
             )
             document.save()
             
-            logger.info(f"Successfully uploaded file: {file.name} as {blob_name}")
-            return JsonResponse({
+            logger.info(f"Successfully uploaded file: {file.name} as {user_blob_name} for user: {user_email}")
+            
+            response_data = {
                 'message': 'File uploaded successfully',
                 'filename': file.name,
                 'container': container_name,
-                'blob_name': blob_name
-            })
+                'blob_name': user_blob_name,
+                'user_email': user_email
+            }
+            
+            # Add deletion information if documents were deleted
+            if deletion_result['deleted_count'] > 0:
+                response_data['previous_documents_deleted'] = {
+                    'count': deletion_result['deleted_count'],
+                    'message': deletion_result['message']
+                }
+            
+            return JsonResponse(response_data)
             
         except AzureError as e:
             logger.error(f"Azure error during upload: {str(e)}")
@@ -235,24 +445,39 @@ def index(request):
     return render(request, 'upload/index.html', context)
 
 @csrf_exempt
+@csrf_exempt
 def translate_documents(request):
-    """Handle document translation requests."""
+    """Handle document translation requests with user isolation."""
+    logger.info(f"Translation request received. Method: {request.method}")
+    logger.debug(f"Request headers: {dict(request.headers)}")
+    
     if request.method == 'POST':
         try:
+            # Log raw request body for debugging
+            logger.debug(f"Request body: {request.body}")
+            
             data = json.loads(request.body)
+            logger.info(f"Parsed JSON data: {data}")
+            
             target_language = data.get('target_language', 'en')
             source_language = data.get('source_language')  # Optional
             clear_target = data.get('clear_target', True)  # Default to True for automatic cleanup
-            # Source cleanup is now always enabled automatically
-            cleanup_source = True  # Always clean up source files automatically
+            cleanup_source = data.get('cleanup_source', False)  # Optional cleanup
             
-            logger.info(f"Translation request to language: {target_language}")
+            # Get user session information  
+            if not hasattr(request, 'user_session') or not request.user_session:
+                logger.error("No user session found")
+                return JsonResponse({'error': 'Session error. Please refresh the page and try again.'}, status=400)
+            
+            user_email = request.user_email
+            user_id_hash = request.user_id_hash
+            
+            logger.info(f"Translation request to language: {target_language} for user: {user_email}")
             if clear_target:
                 logger.info("Target container will be cleared before translation")
-            logger.info("Source files will be automatically cleaned up after translation")
             
-            # Get all documents (since no user isolation)
-            user_documents = Document.objects.all()
+            # Get user's documents only
+            user_documents = Document.objects.filter(user_id_hash=user_id_hash)
             if not user_documents:
                 return JsonResponse({'error': 'No documents found for translation'}, status=400)
             
@@ -266,15 +491,30 @@ def translate_documents(request):
                     'error': f'Translation service configuration error: {str(config_error)}'
                 }, status=500)
             
-            # Use the translation service directly with main containers
-            result = translation_service.translate_documents_default(
+            # Use user-specific translation method
+            result = translation_service.translate_documents_user_specific(
+                user_id_hash=user_id_hash,
                 target_language=target_language,
                 source_language=source_language,
                 clear_target=clear_target,
                 cleanup_source=cleanup_source
             )
             
-            logger.info(f"Translation completed. Status: {result['status']}")
+            # Update documents as translated
+            user_documents.update(
+                is_translated=True, 
+                translation_language=target_language
+            )
+            
+            logger.info(f"Translation completed for user {user_email}. Status: {result['status']}")
+            logger.info(f"Translation result keys: {result.keys()}")
+            logger.info(f"Documents in result: {result.get('documents', [])}")
+            logger.info(f"Number of documents: {len(result.get('documents', []))}")
+            
+            # Log each document for debugging
+            if 'documents' in result:
+                for i, doc in enumerate(result['documents']):
+                    logger.info(f"Document {i}: {doc}")
             
             return JsonResponse({
                 'success': True,
@@ -282,11 +522,13 @@ def translate_documents(request):
                 'message': f"Translation started successfully. Status: {result['status']}"
             })
             
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error: {str(e)}, Request body: {request.body}")
             return JsonResponse({'error': 'Invalid JSON payload'}, status=400)
         except Exception as e:
             error_message = str(e)
-            logger.error(f'Translation error: {error_message}')
+            logger.error(f'Translation error for user {getattr(request, "user_email", "unknown")}: {error_message}')
+            logger.error(f'Full exception: {repr(e)}')
             
             # Provide more user-friendly error messages
             if "TargetFileAlreadyExists" in error_message:
@@ -298,12 +540,44 @@ def translate_documents(request):
                 return JsonResponse({
                     'error': f'Translation failed: {error_message}'
                 }, status=500)
+    else:
+        logger.warning(f"Invalid request method for translation: {request.method}")
     
     return JsonResponse({'error': 'Invalid request method'}, status=405)
 
+@require_user_session
 def download_file(request, filename):
-    """Download a translated file from Azure Blob Storage."""
+    """Download a translated file from Azure Blob Storage with user isolation."""
     try:
+        user_id_hash = request.user_id_hash
+        user_email = request.user_email
+        
+        logger.info(f"Download request for file: {filename} by user: {user_email}")
+        logger.debug(f"User ID hash: {user_id_hash}")
+        
+        # Verify file ownership - first try with exact filename
+        document = None
+        try:
+            document = Document.objects.get(
+                user_id_hash=user_id_hash,
+                blob_name=filename
+            )
+            logger.info(f"Found document by blob_name: {filename}")
+        except Document.DoesNotExist:
+            # Try to find by title (original filename)
+            try:
+                document = Document.objects.get(
+                    user_id_hash=user_id_hash,
+                    title=filename
+                )
+                logger.info(f"Found document by title: {filename}")
+            except Document.DoesNotExist:
+                # List all user documents for debugging
+                user_docs = Document.objects.filter(user_id_hash=user_id_hash)
+                logger.warning(f"User {user_email} attempted to access unauthorized file: {filename}")
+                logger.debug(f"Available documents for user: {[doc.blob_name for doc in user_docs]}")
+                raise Http404("File not found or access denied")
+        
         # Get connection string from environment
         connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
         if not connection_string:
@@ -313,35 +587,43 @@ def download_file(request, filename):
         # Create blob service client
         blob_service_client = BlobServiceClient.from_connection_string(connection_string)
         
-        # Try to find the file in target container
+        # Try to find the file in user's target folder (translated files)
         target_container = os.getenv('AZURE_STORAGE_CONTAINER_NAME_TARGET', 'target')
+        user_blob_path = f"{user_id_hash}/{filename}"
+        
+        logger.debug(f"Looking for translated file at: {target_container}/{user_blob_path}")
         
         try:
-            blob_client = blob_service_client.get_blob_client(container=target_container, blob=filename)
+            blob_client = blob_service_client.get_blob_client(container=target_container, blob=user_blob_path)
             blob_data = blob_client.download_blob()
             
             # Create HTTP response with file data
             response = HttpResponse(blob_data.readall(), content_type='application/octet-stream')
             response['Content-Disposition'] = f'attachment; filename="{filename}"'
             
-            logger.info(f"Successfully downloaded file: {filename}")
+            logger.info(f"Successfully downloaded translated file: {filename} for user: {user_email}")
             return response
             
         except ResourceNotFoundError:
-            logger.warning(f"File not found: {filename}")
-            raise Http404("File not found")
+            logger.warning(f"Translated file not found at: {target_container}/{user_blob_path} for user: {user_email}")
+            raise Http404("Translated file not found")
         except Exception as e:
-            logger.error(f"Error downloading file {filename}: {str(e)}")
+            logger.error(f"Error downloading file {user_blob_path} for user {user_email}: {str(e)}")
             raise Http404("Download failed")
             
     except Exception as e:
-        logger.error(f"Download error for {filename}: {str(e)}")
+        logger.error(f"Download error for {filename} by user {getattr(request, 'user_email', 'unknown')}: {str(e)}")
         raise Http404("Download failed")
 
+@csrf_exempt
+@require_user_session
 def list_user_files(request):
-    """List all files."""
+    """List files for the current user only."""
     try:
-        user_documents = Document.objects.all()
+        user_id_hash = request.user_id_hash
+        user_email = request.user_email
+        
+        user_documents = Document.objects.filter(user_id_hash=user_id_hash).order_by('-uploaded_at')
         
         files_data = []
         for doc in user_documents:
@@ -354,15 +636,40 @@ def list_user_files(request):
                 'translation_language': doc.translation_language
             })
         
+        logger.info(f"Listed {len(files_data)} files for user: {user_email}")
+        
         return JsonResponse({
             'success': True,
             'files': files_data,
-            'count': len(files_data)
+            'count': len(files_data),
+            'user_email': user_email
         })
         
     except Exception as e:
-        logger.error(f"Error listing files: {str(e)}")
+        logger.error(f"Error listing files for user {request.user_email}: {str(e)}")
         return JsonResponse({'error': 'Failed to list files'}, status=500)
+
+@csrf_exempt
+@csrf_exempt
+def cleanup_sessions(request):
+    """API endpoint to cleanup old sessions."""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body) if request.body else {}
+            hours = data.get('hours', 24)
+            
+            count = UserSession.cleanup_old_sessions(hours)
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Cleaned up {count} old sessions',
+                'cleaned_count': count
+            })
+        except Exception as e:
+            logger.error(f"Error cleaning up sessions: {str(e)}")
+            return JsonResponse({'error': 'Session cleanup failed'}, status=500)
+    
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
 
 def test_azure_storage(request):
     """
@@ -839,3 +1146,217 @@ def test_translation_service_config():
         result['errors'].append(error_msg)
         result['details'].append(error_msg)
         return result
+
+# Debug endpoint for checking user files and translation service
+@csrf_exempt
+@require_user_session
+def debug_user_files(request):
+    """Debug endpoint to check user files and translation service status."""
+    try:
+        user_email = request.user_email
+        user_id_hash = request.user_id_hash
+        
+        # Check database files
+        user_documents = Document.objects.filter(user_id_hash=user_id_hash)
+        db_files = [{"id": doc.id, "filename": doc.blob_name, "title": doc.title} for doc in user_documents]
+        
+        # Check translation service
+        from services.translation_service import create_translation_service
+        translation_service = create_translation_service()
+        
+        # Check if user has source files in blob storage
+        source_uri = os.getenv('AZURE_TRANSLATION_SOURCE_URI')
+        has_source_files = translation_service._user_has_source_files(source_uri, user_id_hash)
+        
+        # List actual files in blob storage
+        connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        container_client = blob_service_client.get_container_client('source')
+        
+        blob_files = []
+        for blob in container_client.list_blobs(name_starts_with=f"{user_id_hash}/"):
+            blob_files.append(blob.name)
+        
+        return JsonResponse({
+            'user_email': user_email,
+            'user_id_hash': user_id_hash,
+            'database_files': db_files,
+            'blob_storage_files': blob_files,
+            'has_source_files_check': has_source_files,
+            'source_uri': source_uri
+        })
+        
+    except Exception as e:
+        logger.error(f"Debug endpoint error: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+@csrf_exempt
+def delete_translated_documents(request):
+    """Delete all translated documents from Azure Storage and clear UI state."""
+    if request.method == 'POST':
+        try:
+            logger.info("Delete translated documents request received")
+            
+            # Get Azure storage connection
+            connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+            if not connection_string:
+                return JsonResponse({'error': 'Azure Storage connection not configured'}, status=500)
+            
+            target_container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME_TARGET', 'target')
+            
+            blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+            container_client = blob_service_client.get_container_client(target_container_name)
+            
+            # List and delete all blobs in the target container
+            deleted_count = 0
+            deleted_files = []
+            
+            blob_list = container_client.list_blobs()
+            for blob in blob_list:
+                try:
+                    blob_client = container_client.get_blob_client(blob.name)
+                    blob_client.delete_blob()
+                    deleted_count += 1
+                    deleted_files.append(blob.name)
+                    logger.info(f"Deleted translated file: {blob.name}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete blob {blob.name}: {str(e)}")
+            
+            # Update database - mark all documents as not translated
+            updated_docs = Document.objects.filter(is_translated=True).update(
+                is_translated=False,
+                translation_language=None
+            )
+            
+            logger.info(f"Deleted {deleted_count} translated files and updated {updated_docs} database records")
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Deleted {deleted_count} translated documents',
+                'deleted_count': deleted_count,
+                'deleted_files': deleted_files,
+                'updated_records': updated_docs
+            })
+            
+        except Exception as e:
+            logger.error(f"Error deleting translated documents: {str(e)}")
+            return JsonResponse({
+                'error': f'Failed to delete translated documents: {str(e)}'
+            }, status=500)
+    
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
+
+@csrf_exempt
+@require_user_session
+def delete_individual_translated_document(request, filename):
+    """Delete a specific translated document from Azure Storage."""
+    logger.info(f"Delete individual document request received - Method: {request.method}, Filename: {filename}")
+    
+    if request.method == 'POST':
+        try:
+            # Check if user session exists
+            if not hasattr(request, 'user_id_hash') or not hasattr(request, 'user_email'):
+                logger.error("User session not found in delete request")
+                return JsonResponse({'error': 'User session not found. Please refresh and try again.'}, status=400)
+            
+            user_id_hash = request.user_id_hash
+            user_email = request.user_email
+            
+            logger.info(f"Delete individual translated document request for: {filename} by user: {user_email}")
+            logger.info(f"User ID hash: {user_id_hash}")
+            
+            # Verify file ownership
+            document = None
+            try:
+                # First try to find by exact blob_name match
+                document = Document.objects.get(
+                    user_id_hash=user_id_hash,
+                    blob_name=filename
+                )
+                logger.info(f"Found document by exact blob_name: {filename}")
+            except Document.DoesNotExist:
+                try:
+                    # Try to find by title (original filename)
+                    document = Document.objects.get(
+                        user_id_hash=user_id_hash,
+                        title=filename
+                    )
+                    logger.info(f"Found document by title: {filename}")
+                except Document.DoesNotExist:
+                    # Try to find by blob_name ending with the filename (in case of path)
+                    try:
+                        document = Document.objects.get(
+                            user_id_hash=user_id_hash,
+                            blob_name__endswith=filename
+                        )
+                        logger.info(f"Found document by blob_name ending with: {filename}")
+                    except Document.DoesNotExist:
+                        logger.warning(f"Document not found for user {user_email}: {filename}")
+                        return JsonResponse({'error': 'File not found or access denied'}, status=404)
+            
+            # Get Azure storage connection
+            connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+            if not connection_string:
+                logger.error("Azure Storage connection string not found")
+                return JsonResponse({'error': 'Azure Storage connection not configured'}, status=500)
+            
+            target_container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME_TARGET', 'target')
+            logger.info(f"Using target container: {target_container_name}")
+            
+            # Create blob service client
+            try:
+                blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+                container_client = blob_service_client.get_container_client(target_container_name)
+            except Exception as e:
+                logger.error(f"Failed to create blob service client: {str(e)}")
+                return JsonResponse({'error': f'Storage connection failed: {str(e)}'}, status=500)
+            
+            # Delete the specific file from Azure Storage
+            # The blob path should be user_id_hash/filename
+            # But the filename parameter might already include the path or just be the filename
+            if '/' in filename:
+                # If filename includes path, use as-is
+                user_blob_path = filename
+            else:
+                # If filename is just the filename, construct the full path
+                user_blob_path = f"{user_id_hash}/{filename}"
+            
+            logger.info(f"Attempting to delete blob: {user_blob_path}")
+            
+            try:
+                blob_client = container_client.get_blob_client(user_blob_path)
+                blob_client.delete_blob()
+                logger.info(f"Successfully deleted translated file: {user_blob_path} for user: {user_email}")
+                
+                # Update database - mark document as not translated
+                document.is_translated = False
+                document.translation_language = None
+                document.save()
+                logger.info(f"Updated database for document: {filename}")
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Successfully deleted {filename}',
+                    'filename': filename
+                })
+                
+            except ResourceNotFoundError:
+                logger.warning(f"Translated file not found in storage: {user_blob_path} for user: {user_email}")
+                return JsonResponse({'error': 'Translated file not found in storage'}, status=404)
+            except AzureError as e:
+                logger.error(f"Azure error deleting file {user_blob_path} for user {user_email}: {str(e)}")
+                return JsonResponse({'error': f'Azure storage error: {str(e)}'}, status=500)
+            except Exception as e:
+                logger.error(f"Unexpected error deleting file {user_blob_path} for user {user_email}: {str(e)}")
+                return JsonResponse({'error': f'Failed to delete file: {str(e)}'}, status=500)
+            
+        except Exception as e:
+            logger.error(f"Error in delete_individual_translated_document for {filename}: {str(e)}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            logger.error(f"Exception traceback: {traceback.format_exc()}")
+            return JsonResponse({
+                'error': f'Failed to delete translated document: {str(e)}'
+            }, status=500)
+    
+    logger.warning(f"Invalid request method for delete: {request.method}")
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
