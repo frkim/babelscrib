@@ -6,6 +6,7 @@
 // Translation dictionary
 const translations = {    'en': {
         'document_upload': 'Document Upload',
+        'babelscrib_document_translator': 'BabelScrib Document Translator',
         'go_to_homepage': 'Go to Homepage',
         'babelscrib_logo': 'BabelScrib Logo',
         'language': 'Language',
@@ -88,6 +89,7 @@ const translations = {    'en': {
         'seconds': 'seconds'
     },    'fr': {
         'document_upload': 'Téléchargement de Documents',
+        'babelscrib_document_translator': 'BabelScrib Traducteur de Documents',
         'go_to_homepage': 'Aller à l\'Accueil',
         'babelscrib_logo': 'Logo BabelScrib',
         'language': 'Langue',
@@ -230,7 +232,7 @@ function setLanguage(lang) {
 // Update all translatable elements
 function updateUI() {
     // Update title
-    document.title = t('document_upload');
+    document.title = t('babelscrib_document_translator');
     
     // Update elements with data-i18n attribute
     document.querySelectorAll('[data-i18n]').forEach(element => {
